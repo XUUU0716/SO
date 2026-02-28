@@ -6,13 +6,15 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <pthread.h>
-#include "pow.h"
 #include <string.h>
 #include <stdint.h>
+#include <stdatomic.h>
+
+#include "pow.h"
 
 // Global variable
-int globalSolution = 0;
-int findSolution = 0;
+atomic_int globalSolution = 0;
+atomic_int findSolution = 0;
 int globalTarget = 0;
 
 // miner function argument
@@ -119,6 +121,7 @@ int main(int argc, char *argv[])
     registradorPid = fork();
     if (registradorPid > 0)
     {
+        int registrationStatus;
         close(pipe_miner_reg[0]);
         close(pipe_reg_miner[1]);
 
@@ -141,8 +144,6 @@ int main(int argc, char *argv[])
             {
                 pthread_join(threads[i], NULL);
             }
-            fprintf(stdout, "Solution ronda %d: %d\n", j + 1, globalSolution);
-            fprintf(stdout, "comprobation: %ld\n", pow_hash(globalSolution));
 
             MinerMsg msg;
             msg.round = j + 1;
@@ -164,7 +165,10 @@ int main(int argc, char *argv[])
         close(pipe_reg_miner[0]);
 
         // Wait for the registration process
-        wait(NULL);
+        wait(&registrationStatus);
+        {
+            fprintf(stdout,"Logger exited with status %d\n",registrationStatus);
+        }
     }
     else if (registradorPid == 0)
     {
@@ -174,7 +178,7 @@ int main(int argc, char *argv[])
         char registerFile[256];
         /* File to write*/
         sprintf(registerFile, "%jd.log", (intmax_t)getppid());
-        int fd_register = open(registerFile, O_CREAT | O_WRONLY, 0644);
+        int fd_register = open(registerFile, O_CREAT | O_WRONLY | O_APPEND, 0644);
         /* read message from Miner process */
         nbytes = 0;
         MinerMsg msg;
@@ -188,19 +192,29 @@ int main(int argc, char *argv[])
             }
             if (nbytes > 0)
             {
+                char result_status[256];
+
                 // Process Registration need to be finished
                 if (msg.solution == -1)
                 {
                     break;
                 }
+                if(msg.target%2==0)
+                {
+                    strcpy(result_status,"accepted");
+                }else{
+                    strcpy(result_status,"rejected");
+                }
 
-                dprintf(fd_register, "Id:         [%d]\n", msg.round);
-                dprintf(fd_register, "Winner:     [%jd]\n", (intmax_t)getppid());
-                dprintf(fd_register, "Target:     [%d]\n", msg.target);
-                dprintf(fd_register, "Solution:   [%d] [(%s)]\n", msg.solution, "Accepted");
-                dprintf(fd_register, "Votes:      [%d]/[%d]\n", msg.round, msg.round);
-                dprintf(fd_register, "Wallets:    [%jd]:[%d]\n", (intmax_t)getppid(), msg.round);
+                dprintf(fd_register, "Id:         %d\n", msg.round);
+                dprintf(fd_register, "Winner:     %jd\n", (intmax_t)getppid());
+                dprintf(fd_register, "Target:     %d\n", msg.target);
+                dprintf(fd_register, "Solution:   %d (%s)\n", msg.solution, result_status);
+                dprintf(fd_register, "Votes:      %d/%d\n", msg.round, msg.round);
+                dprintf(fd_register, "Wallets:    %jd:%d\n", (intmax_t)getppid(), msg.round);
                 dprintf(fd_register, "\n");
+
+                fprintf(stdout, "Solution %s: %d --> %d\n", result_status,msg.target,msg.solution);
 
                 //confirmation to miner process
                 int answer=1;
@@ -214,4 +228,9 @@ int main(int argc, char *argv[])
     free(args);
     free(threads);
 
+    if(registradorPid>0)
+    {
+        fprintf(stdout, "Miner exited with status 0\n");
+    }
+    return 0;
 }
