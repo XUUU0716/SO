@@ -17,21 +17,29 @@ atomic_int globalSolution = 0;
 atomic_int findSolution = 0;
 int globalTarget = 0;
 
-// miner function argument
+
+/**
+ * @brief Thread_args
+ * This structure store all information of argument needed to executed the function
+ */
 typedef struct Thread_args
 {
-    long int start;
-    long int end;
-    // long int target;
+    long int start; // The start of the intervals to search
+    long int end;   // The end of the intervals to search
 
 } Thread_args;
 
+/**
+ * @brief MinerMsg
+ * This structure store all information that process Miner have to pass to process Registrador
+ */
 typedef struct MinerMsg
 {
-    int round;
-    int target;
-    int solution;
+    int round;  // The round of the game
+    int target; // The target that are searching
+    int solution;   // The solution founded
 } MinerMsg;
+
 /**
  * @brief This function try to solve a hash problem by brute force
  * @author Shaofan Xu
@@ -54,12 +62,6 @@ void *miner(void *arg)
     return NULL;
 }
 
-/*error = pthread_create(&h2, NULL, slow_printf, world);
-  if (error != 0) {
-    fprintf(stderr, "pthread_create: %s\n", strerror(error));
-    exit(EXIT_FAILURE);
-  }*/
-
 int main(int argc, char *argv[])
 {
 
@@ -73,11 +75,13 @@ int main(int argc, char *argv[])
     int pipe_reg_miner[2]; // Reg to miner
 
     pid_t registradorPid;
-    ssize_t nbytes;
 
+
+    //Argument comprobation
     if (argc < 4)
     {
         fprintf(stderr, "Usage ./miner < TARGET_INI > < ROUNDS > < N_THREADS >\n");
+        fprintf(stdout,"Miner exited unexpectedly\n");
         exit(EXIT_FAILURE);
     }
 
@@ -90,19 +94,23 @@ int main(int argc, char *argv[])
     if ((args = malloc(sizeof(Thread_args) * nThreads)) == NULL)
     {
         fprintf(stderr, "Memory allocation error\n");
+        fprintf(stdout,"Miner exited unexpectedly\n");
         exit(EXIT_FAILURE);
     }
 
+    // Create an array of threads
     if ((threads = malloc(sizeof(pthread_t) * nThreads)) == NULL)
     {
         free(args);
         fprintf(stderr, "Memory allocation error\n");
+        fprintf(stdout,"Miner exited unexpectedly\n");
         exit(EXIT_FAILURE);
     }
 
     // Asignation of target init
     globalTarget = targetIni;
 
+    // Initialize the threads arguments
     for (int i = 0; i < nThreads; ++i)
     {
         args[i].start = i * (POW_LIMIT) / nThreads;
@@ -115,13 +123,20 @@ int main(int argc, char *argv[])
         free(args);
         free(threads);
         fprintf(stderr, "Wrong at pipe\n");
+        fprintf(stdout,"Miner exited unexpectedly\n");
         exit(EXIT_FAILURE);
     }
 
+    //Creat a child process Registrador
     registradorPid = fork();
     if (registradorPid > 0)
     {
-        int registrationStatus;
+        int registradorStatus;
+        MinerMsg msg;
+        MinerMsg end_msg = {0, 0, -1};
+        int answer;
+
+        // close pipe that don´t need
         close(pipe_miner_reg[0]);
         close(pipe_reg_miner[1]);
 
@@ -131,11 +146,13 @@ int main(int argc, char *argv[])
             {
                 // Create threads
                 int error = pthread_create(&threads[i], NULL, miner, &args[i]);
+                // Error control
                 if (error != 0)
                 {
                     free(args);
                     free(threads);
                     fprintf(stderr, "pthread_create: %s\n", strerror(error));
+                    fprintf(stdout,"Miner exited unexpectedly\n");
                     exit(EXIT_FAILURE);
                 }
             }
@@ -145,54 +162,66 @@ int main(int argc, char *argv[])
                 pthread_join(threads[i], NULL);
             }
 
-            MinerMsg msg;
             msg.round = j + 1;
             msg.target = globalTarget;
             msg.solution = globalSolution;
 
+            // Send to process Registrador
             write(pipe_miner_reg[1], &msg, sizeof(msg));
 
-            int answer;
+            // Recive confirmation from process Regitrador
             read(pipe_reg_miner[0], &answer, sizeof(answer));
+
             // set new target
             globalTarget = globalSolution;
             findSolution = 0;
         }
-        MinerMsg end_msg = {0, 0, -1};
+        //Send an end message to process Registrador
         write(pipe_miner_reg[1], &end_msg, sizeof(end_msg));
 
+        //Close all pipe
         close(pipe_miner_reg[1]);
         close(pipe_reg_miner[0]);
 
-        // Wait for the registration process
-        wait(&registrationStatus);
+        //Wait for the process Registrador
+        wait(&registradorStatus);
+        if(WIFEXITED(registradorStatus))
         {
-            fprintf(stdout,"Logger exited with status %d\n",registrationStatus);
+            fprintf(stdout,"Logger exited with status %d\n",registradorStatus);
+        }else{
+            fprintf(stdout,"Logger exited unexpectedly\n");
         }
     }
     else if (registradorPid == 0)
     {
+        char registerFile[256];
+        int fd_register;
+        MinerMsg msg;
+        ssize_t nbytes;
+
+        // Close pipe that not going to use
         close(pipe_miner_reg[1]);
         close(pipe_reg_miner[0]);
 
-        char registerFile[256];
         /* File to write*/
         sprintf(registerFile, "%jd.log", (intmax_t)getppid());
-        int fd_register = open(registerFile, O_CREAT | O_WRONLY | O_APPEND, 0644);
+
+        fd_register = open(registerFile, O_CREAT | O_WRONLY | O_APPEND, 0644);
+
         /* read message from Miner process */
         nbytes = 0;
-        MinerMsg msg;
         do
         {
             nbytes = read(pipe_miner_reg[0], &msg, sizeof(msg));
             if (nbytes == -1)
             {
-                fprintf(stderr, "Error readBuffer\n");
+                fprintf(stderr, "Error reading message from Miner\n");
                 exit(EXIT_FAILURE);
             }
             if (nbytes > 0)
             {
                 char result_status[256];
+                int answer=1;
 
                 // Process Registration need to be finished
                 if (msg.solution == -1)
@@ -206,6 +235,7 @@ int main(int argc, char *argv[])
                     strcpy(result_status,"rejected");
                 }
 
+                //Print at the file
                 dprintf(fd_register, "Id:         %d\n", msg.round);
                 dprintf(fd_register, "Winner:     %jd\n", (intmax_t)getppid());
                 dprintf(fd_register, "Target:     %d\n", msg.target);
@@ -214,17 +244,20 @@ int main(int argc, char *argv[])
                 dprintf(fd_register, "Wallets:    %jd:%d\n", (intmax_t)getppid(), msg.round);
                 dprintf(fd_register, "\n");
 
+                //Print at the stdout
                 fprintf(stdout, "Solution %s: %d --> %d\n", result_status,msg.target,msg.solution);
 
-                //confirmation to miner process
-                int answer=1;
+                //confirmation to Miner process
                 write(pipe_reg_miner[1],&answer,sizeof(answer));
             }
         } while (nbytes != 0);
+
+        //Close all file
         close(fd_register);
         close(pipe_reg_miner[1]);
         close(pipe_miner_reg[0]);
     }
+    //Free all memory
     free(args);
     free(threads);
 

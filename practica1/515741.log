@@ -1,0 +1,35 @@
+Id:         1
+Winner:     515741
+Target:     100
+Solution:   2813411 (accepted)
+Votes:      1/1
+Wallets:    515741:1
+
+Id:         2
+Winner:     515741
+Target:     2813411
+Solution:   4952263 (rejected)
+Votes:      2/2
+Wallets:    515741:2
+
+Id:         3
+Winner:     515741
+Target:     4952263
+Solution:   1751421 (rejected)
+Votes:      3/3
+Wallets:    515741:3
+
+Id:         4
+Winner:     515741
+Target:     1751421
+Solution:   4619098 (rejected)
+Votes:      4/4
+Wallets:    515741:4
+
+Id:         5
+Winner:     515741
+Target:     4619098
+Solution:   9959801 (accepted)
+Votes:      5/5
+Wallets:    515741:5
+
