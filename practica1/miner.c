@@ -1,3 +1,12 @@
+/**
+ * @brief It defines a simulation of blockchain and minering
+ *
+ * @file miner.c
+ * @author Shaofan Xu, Javier Santa Maria
+ * @version 0
+ * @date 20-02-2026
+ * @copyright GNU Public License
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/wait.h>
