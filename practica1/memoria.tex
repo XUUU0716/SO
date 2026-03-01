@@ -1,0 +1,54 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage{graphicx}
+\usepackage{amsfonts,amsmath}
+\usepackage{listings}
+\title{\textbf{Sistemas Operativos: Práctica 1}}
+\author{
+    Shaofan Xu \\
+    \and 
+    Javier Maria Santa
+    }
+\date{\today}
+
+
+\begin{document}
+\maketitle
+
+\clearpage
+\section{Introducción}
+En esta práctica el objetivo es implementar códigos en C que dado una función Hash $\mathrm{pow}:\mathbb{Z}\to \mathbb{Z}/9997697\mathbb{Z}$
+con $x \mapsto (X\times x+y) \bmod 9997697$ y la imagen, debemos sacar su correspondiente $x$. Donde aprovechamos los conocimientos de 
+procesos e hilos para simular la minería de un blockchain.
+\section{Requisitos cumplidos y no cumplidos}
+\subsection{Requisitos cumplidos}
+Se han implementado correctamente los siguientes objetivos principales de la práctica:
+\begin{itemize}
+    \item \textbf{Control de salida (a)}: Impresión exacta de los mensajes de estado (\textit{``Miner exited with status 0''}, \textit{``Logger exited with status 0''}, etc.) según las especificaciones.
+    \item \textbf{Gestión de hilos y concurrencia (b):} Como sabemos que el rango de la preimagen está en [0,9997697] (para simplificar el problema),creamos $N$ hilos mediante \texttt{pthread\_create} para dividir el espacio de búsqueda en $N$, para cada uno de los hilos se encarga de cada parte de espacio de búsqueda, una vez un hilo se ha encontrado la solución, los otros inmediadamente tienen que parar. Así, sucesivamenta para cada ronda.
+    \item \textbf{Gestión de procesos (c):} Creación del proceso hijo Registrador mediante \texttt{fork ()} a partir de un proceso padre que denominamos Minero, dónde este se encarga de crear hilos para buscar de manera a fuerza bruta la preimagen ($x$) de una imagen dada ($y$). Y Registrador se encarga de guardar los resultados en un fichero.
+    \item \textbf{Comunicación IPC (c):} Se realiza a través de tuberías (pipe), donde establecemos 2 tuberías: Minero a Registrador y Registrador a Minero, y cerrando los lados que no se usen.
+    \begin{itemize} 
+        \item Minero a Registrador (pipe\_miner\_reg): Para que el Minero manda a Registrador el resultado de cada ronda de búsqueda. Y el Registrador recibe los resultados e imprimen en un fichero ``ppid.log'' con el formato dado. Este proceso, se continúa hasta que el Minero manda una señal de terminación ($-1$ como solución en nuestro caso)
+        \item Registrador a Minero (pipe\_reg\_miner): El Registrador manda una confirmación (1 en nuestro caso) de que se ha recibido correctamente por la tubería. Una vez el Minero recibe la confirmación se sigue con la siguiente ronda.
+    \end{itemize}
+    \item \textbf{Control de errores:}
+    \begin{itemize}
+        \item \textbf{System Call} Hemos tenido en cuenta los casos en la que se usan llamadas al sistema como \textit{malloc,pipe,pthread\_create,etc}, así como sus controles de errores y liberación.
+        \item \textbf{Gestión adecuada de hilos:} El proceso principal Minero espera a todos los hilos creados mediante \texttt{pthread\_join()} antes de enviar los resultados de la ronda al Registrador.
+        \item \textbf{Gestión adecuada de proceso:} Cuando termina todas las rondas el proceso principal Minero espera al proceso hijo Registrador mediante \texttt{wait(\&status)}.
+        \item \textbf{Gestión adecuada de tuberías:} Durante la ejecución de programas, cada uno de los procesos se cierran el lado de tubería que no lo van a utilizar, y una vez, alcanzado el máximo de las rondas se cierran todas las tuberías.
+    \end{itemize}
+   
+\end{itemize}
+
+\subsection{Requisitos no cumplidos}
+Todos los requisitos obligatorios especificados en el enunciado han sido implementados 
+y funcionan correctamente.
+\section{Pruebas: Funcionamiento y Rendimiento}
+\subsection{Pruebas de Funcionamiento}
+Se han ejecutado diversas pruebas para asegurar el correcto funcionamiento del programa.
+\begin{lstlisting}[language=bash]
+./miner 100 50 4
+\end{lstlisting}
+\subsection{Pruebas de Rendimiento}
+\end{document}
