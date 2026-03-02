@@ -2,6 +2,8 @@
 \usepackage{graphicx}
 \usepackage{amsfonts,amsmath}
 \usepackage{listings}
+\usepackage[T1]{fontenc}
+
 \title{\textbf{Sistemas Operativos: Práctica 1}}
 \author{
     Shaofan Xu \\
@@ -47,8 +49,31 @@ y funcionan correctamente.
 \section{Pruebas: Funcionamiento y Rendimiento}
 \subsection{Pruebas de Funcionamiento}
 Se han ejecutado diversas pruebas para asegurar el correcto funcionamiento del programa.
+
+\subsubsection{Casos normales}
+Se ejecutó el programa con parámetros correspondientes (ej.target inicial 100, 10 rondas y 4 hilos):
 \begin{lstlisting}[language=bash]
-./miner 100 50 4
+./miner 100 10 4
 \end{lstlisting}
+El programa generó correctamente el archivo \texttt{.log} con la estructura especificada(Id, ronda, target, solución, etc ), alternando la validación (accepted/rejected). Al finalizar, se imprime en la terminal exactamente los mensajes requeridos:
+\begin{lstlisting}[language=bash]
+Solution accepted: 100 --> 2813411
+Solution rejected: 2813411 --> 4952263
+Solution rejected: 4952263 --> 1751421
+Solution rejected: 1751421 --> 4619098
+Solution accepted: 4619098 --> 9959801
+Solution rejected: 9959801 --> 297242
+Solution accepted: 297242 --> 7642589
+Solution rejected: 7642589 --> 1566555
+Solution rejected: 1566555 --> 7848135
+Solution rejected: 7848135 --> 5915685
+Logger exited with status 0
+Miner exited with status 0
+\end{lstlisting}
+\subsubsection{Casos de errores}
+Se probaron situaciones anómalas como:
+\begin{itemize}
+    \item \textbf{Falta de argumentos:} Al ejecutar \texttt{./miner} sin parámetros, el programa detecta el error, muestra el uso correcto \textit{``Usage ./miner < TARGET\_INI > < ROUNDS > < N\_THREADS >''} e imprime \textit{``Miner exited unexpectedly''}.
+\end{itemize}
 \subsection{Pruebas de Rendimiento}
 \end{document}
