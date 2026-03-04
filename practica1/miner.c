@@ -239,7 +239,7 @@ int main(int argc, char *argv[])
                 }
                 if(msg.target%2==0)
                 {
-                    strcpy(result_status,"accepted");
+                    strcpy(result_status,"validated");
                 }else{
                     strcpy(result_status,"rejected");
                 }
