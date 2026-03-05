@@ -46,7 +46,17 @@ Se han implementado correctamente los siguientes objetivos principales de la pr�
 \subsection{Requisitos no cumplidos}
 Todos los requisitos obligatorios especificados en el enunciado han sido implementados 
 y funcionan correctamente.
+
 \section{Pruebas: Funcionamiento y Rendimiento}
+\subsection{Entorno de ejecución}
+Las pruebas y mediciones se han llevado a cabo bajo las siguientes condiciones de
+hardware y software para garantizar la consistencia de los resultados:
+\begin{itemize}
+    \item Sistema Operativo: WSL2 (Ubuntu) sobre Windows 11.
+    \item Hardware: 16 GB de memoria RAM.
+    \item Herramienta de medición: Comando time de la shell de Linux.
+\end{itemize}
+
 \subsection{Pruebas de Funcionamiento}
 Se han ejecutado diversas pruebas para asegurar el correcto funcionamiento del programa.
 
@@ -70,10 +80,63 @@ Solution rejected: 7848135 --> 5915685
 Logger exited with status 0
 Miner exited with status 0
 \end{lstlisting}
+
 \subsubsection{Casos de errores}
 Se probaron situaciones anómalas como:
 \begin{itemize}
     \item \textbf{Falta de argumentos:} Al ejecutar \texttt{./miner} sin parámetros, el programa detecta el error, muestra el uso correcto \textit{``Usage ./miner < TARGET\_INI > < ROUNDS > < N\_THREADS >''} e imprime \textit{``Miner exited unexpectedly''}.
 \end{itemize}
+
 \subsection{Pruebas de Rendimiento}
+Para evaluar la eficiencia de la paralelización implementada, se han realizado pruebas de rendimiento variando el número de hilos de ejecución. Estas
+pruebas permiten analizar cómo el sistema escala al dividir el espacio de búsqueda entre múltiples unidades de procesamiento.
+\subsubsection{Pruebas realizadas}
+Se ejecutó el comando \texttt{./miner 0 10 N} (donde N es el número de hilos)
+manteniendo fijos el objetivo inicial (0) y el número de rondas (10). Los
+datos obtenidos se resumen en la siguiente tabla:
+
+\subsubsection{Resultados Obtenidos}
+\begin{table}[h]
+\centering
+\begin{tabular}{|c|c|c|c|c|}
+\hline
+\textbf{Hilos (N)} & \textbf{Tiempo Real (s)} & \textbf{Tiempo User (s)} & \textbf{Tiempo Sys (s)} & \textbf{Speedup ($S_n$)} \\ \hline
+1 & 0.166s & 0.075s & 0.000s & 1.00x (Base) \\ \hline
+2 & 0.107s & 0.046s & 0.007s & 1.55x \\ \hline
+4 & 0.074s & 0.010s & 0.003s & 2.24x \\ \hline
+8 & 0.087s & 0.094s & 0.000s & 1.90x \\ \hline
+\end{tabular}
+\caption{Tiempos de ejecución y Speedup en función del número de hilos}
+\label{tab:tiempos_hilos}
+\end{table}
+\subsubsection{Análisis y Razonamiento}
+Tras analizar los datos de la tabla, se pueden extraer las siguientes
+conclusiones técnicas:
+\begin{itemize}
+    \item Paralelización efectiva (1 a 4 hilos): Se observa una reducción notable en el tiempo Real a medida que aumentamos los hilos hasta 4. Esto confirma que la estrategia de fragmentar el intervalo POW_LIMIT permite que los hilos realicen búsquedas de fuerza bruta de forma independiente y concurrente, optimizando el uso de los núcleos de la CPU.
+    \item Saturación y Overhead (8 hilos): Al incrementar el número de hilos a 8, el
+tiempo Real aumenta ligeramente a 0.087s y el tiempo User se eleva
+significativamente a 0.094s. Este fenómeno ocurre porque, para una carga de
+trabajo de solo 10 rondas, el coste temporal de crear, sincronizar y destruir 8
+hilos mediante pthread_create y pthread_join supera el beneficio obtenido por
+la computación paralela.
+    \item Número óptimo de hilos: Para la arquitectura del sistema utilizado (WSL2) y
+la carga de trabajo específica de la práctica, el número óptimo se sitúa en 4
+hilos. En este punto se alcanza el mejor equilibrio entre el aprovechamiento de
+la CPU y la sobrecarga mínima del sistema operativo en la gestión de hilos y
+cambios de contexto.
+    \item Consumo de CPU: El hecho de que el tiempo User (tiempo total de CPU) sea
+superior al tiempo Real en la prueba de 8 hilos refleja que el sistema está
+invirtiendo más esfuerzo en la gestión de la concurrencia que en la resolución
+efectiva del problema matemático
+\end{itemize}
+\section{Conclusión y Respuesta a las cuestiones del enunciado}
+\textbf{Pregunta d) ¿Qué conclusiones se pueden tomar respecto al número óptimo de hilos?}
+Una vez concluido todos los trabajos realizados, podemos concluir que el número óptimo de hilos coincide con el número de procesadores disponible para máquina.
+
+
+Como se observa en la tabla, el máximo rendimiento se alcanza exactamente al utilizar 4 hilos. Al incrementar el número a 8 hilos, el rendimiento disminuye.
+
+Ya que si creamos más hilos que el número del procesador, no es posible ejecutar los hilos de forma simultánea. El planificador del sistema operativo se va a obligar intercalando su ejecución.
+
 \end{document}
