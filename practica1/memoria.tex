@@ -3,6 +3,7 @@
 \usepackage{amsfonts,amsmath}
 \usepackage{listings}
 \usepackage[T1]{fontenc}
+\usepackage{float}
 
 \title{\textbf{Sistemas Operativos: Práctica 1}}
 \author{
@@ -92,11 +93,16 @@ Para evaluar la eficiencia de la paralelización implementada, se han realizado 
 pruebas permiten analizar cómo el sistema escala al dividir el espacio de búsqueda entre múltiples unidades de procesamiento.
 \subsubsection{Pruebas realizadas}
 Se ejecutó el comando \texttt{./miner 0 10 N} (donde N es el número de hilos)
-manteniendo fijos el objetivo inicial (0) y el número de rondas (10). Los
-datos obtenidos se resumen en la siguiente tabla:
-
+manteniendo fijos el objetivo inicial (0) y el número de rondas (10).
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.7\textwidth]{ejecucion.png}
+    \caption{Resultados de ejecución del algoritmo POW con diferentes hilos.} 
+    \label {fig:ejecucion_pow}
+\end{figure}
 \subsubsection{Resultados Obtenidos}
-\begin{table}[h]
+ Los datos obtenidos se resumen en la siguiente tabla:
+\begin{table}[H]
 \centering
 \begin{tabular}{|c|c|c|c|c|}
 \hline
@@ -113,25 +119,15 @@ datos obtenidos se resumen en la siguiente tabla:
 Tras analizar los datos de la tabla, se pueden extraer las siguientes
 conclusiones técnicas:
 \begin{itemize}
-    \item Paralelización efectiva (1 a 4 hilos): Se observa una reducción notable en el tiempo Real a medida que aumentamos los hilos hasta 4. Esto confirma que la estrategia de fragmentar el intervalo POW_LIMIT permite que los hilos realicen búsquedas de fuerza bruta de forma independiente y concurrente, optimizando el uso de los núcleos de la CPU.
-    \item Saturación y Overhead (8 hilos): Al incrementar el número de hilos a 8, el
-tiempo Real aumenta ligeramente a 0.087s y el tiempo User se eleva
-significativamente a 0.094s. Este fenómeno ocurre porque, para una carga de
-trabajo de solo 10 rondas, el coste temporal de crear, sincronizar y destruir 8
-hilos mediante pthread_create y pthread_join supera el beneficio obtenido por
-la computación paralela.
-    \item Número óptimo de hilos: Para la arquitectura del sistema utilizado (WSL2) y
-la carga de trabajo específica de la práctica, el número óptimo se sitúa en 4
-hilos. En este punto se alcanza el mejor equilibrio entre el aprovechamiento de
-la CPU y la sobrecarga mínima del sistema operativo en la gestión de hilos y
-cambios de contexto.
-    \item Consumo de CPU: El hecho de que el tiempo User (tiempo total de CPU) sea
-superior al tiempo Real en la prueba de 8 hilos refleja que el sistema está
-invirtiendo más esfuerzo en la gestión de la concurrencia que en la resolución
-efectiva del problema matemático
+    \item Paralelización efectiva (1 a 4 hilos): Se observa una reducción notable en el tiempo Real a medida que aumentamos los hilos hasta 4. Esto confirma que la estrategia de fragmentar el intervalo POW\_LIMIT permite que los hilos realicen búsquedas de fuerza bruta de forma independiente y concurrente, optimizando el uso de los núcleos de la CPU.
+    \item Saturación y Overhead (8 hilos): Al incrementar el número de hilos a 8, el tiempo Real aumenta ligeramente a 0.087s y el tiempo User se eleva significativamente a 0.094s. Este fenómeno ocurre porque, para una carga de trabajo de solo 10 rondas, el coste temporal de crear, sincronizar y destruir 8 hilos mediante pthread\_create y pthread\_join supera el beneficio obtenido por la computación paralela.
+    \item Número óptimo de hilos: Para la arquitectura del sistema utilizado (WSL2) y la carga de trabajo específica de la práctica, el número óptimo se sitúa en 4 hilos. En este punto se alcanza el mejor equilibrio entre el aprovechamiento de la CPU y la sobrecarga mínima del sistema operativo en la gestión de hilos y cambios de contexto.
+    \item Consumo de CPU: El hecho de que el tiempo User (tiempo total de CPU) sea superior al tiempo Real en la prueba de 8 hilos refleja que el sistema está invirtiendo más esfuerzo en la gestión de la concurrencia que en la resolución efectiva del problema matemático
 \end{itemize}
 \section{Conclusión y Respuesta a las cuestiones del enunciado}
 \textbf{Pregunta d) ¿Qué conclusiones se pueden tomar respecto al número óptimo de hilos?}
+
+
 Una vez concluido todos los trabajos realizados, podemos concluir que el número óptimo de hilos coincide con el número de procesadores disponible para máquina.
 
 
