@@ -2,7 +2,8 @@ EXE=miner
 CC=gcc -pedantic
 CFLAGS=-Wall
 
-.PHONY: clean
+.PHONY: all clean
+all: $(EXE)
 
 $(EXE) : % : %.o pow.o
 	@echo "#---------------------------"
