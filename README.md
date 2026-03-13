@@ -16,3 +16,5 @@ Las distintas prácticas se guardarán en cada uno de los directorios correspond
 ## Github
 git clone [https://github.com/XUUU0716/SO.git]
 
+
+https://prod.liveshare.vsengsaas.visualstudio.com/join?6FEC11910E3197346E93B3D00085FA390720
