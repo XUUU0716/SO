@@ -22,9 +22,9 @@
 #include "pow.h"
 
 // Global variable
-atomic_int globalSolution = 0;
-atomic_int findSolution = 0;
-int globalTarget = 0;
+atomic_int globalSolution = 0;  //the solution founded by thread
+atomic_int findSolution = 0;    //if there is thread that already founded the solution
+int globalTarget = 0;           //the target 
 
 
 /**
@@ -239,7 +239,7 @@ int main(int argc, char *argv[])
                 }
                 if(msg.target%2==0)
                 {
-                    strcpy(result_status,"accepted");
+                    strcpy(result_status,"validated");
                 }else{
                     strcpy(result_status,"rejected");
                 }

@@ -4,3 +4,4 @@
 *.toc
 *.out
 *.fls
+.DS_Store
