@@ -5,3 +5,5 @@
 *.out
 *.fls
 .DS_Store
+/vscode
+*.json
