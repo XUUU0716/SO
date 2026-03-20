@@ -14,21 +14,27 @@
 #include <stdint.h>
 #include <stdatomic.h>
 #include <signal.h>
+#include<unistd.h>
 
 #define PID_FILE "pids.pid"
-#define SEM_NAME "/miner_sem"
+#define TARGET_FILE "target.tgt"
+#define SEM_NAME_PID "/miner_pid"
 
-void handler(int sig)
+void alarm_handler(int sig)
 {
-    
+    FILE *pidFile=
 }
 
 int main(int argc, char *argv[])
 {
-    sem_t *sem=NULL;
+    sem_t *sem_pid=NULL;
+    sem_t* sem_votes=NULL;
+    sem_t* sem_winner=NULL;
     int n_seconds;
     int n_threads;
     struct sigaction act;
+
+    FILE *pidFile=NULL;
     //Argument comprobation
     if (argc < 3)
     {
@@ -37,7 +43,7 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    if((sem=sem_open(SEM_NAME,O_CREAT|O_EXCL,S_IRUSR|S_IWUSR,0))==SEM_FAILED)
+    if((sem_pid=sem_open(SEM_NAME_PID,O_CREAT|O_EXCL,S_IRUSR|S_IWUSR,1))==SEM_FAILED)
     {
         perror("sem open");
         exit(EXIT_FAILURE);
@@ -52,11 +58,21 @@ int main(int argc, char *argv[])
     sigemptyset(&(act.sa_mask));
     act.sa_flags=0;
 
-    act.sa_handler=handler;
+    act.sa_handler=alarm_handler;
     if(sigaction(SIGALRM,&act,NULL)<0)
     {
         perror("sigaction");
         exit(EXIT_FAILURE);
     }
+
+    //store pid in the file
+    sem_wait(sem_pid);
+    if(pidFile=fopen(PID_FILE,"a")==NULL)
+    {
+        sem_post(sem_pid)
+        perror("")
+    }
+    fprintf(pidFile,"%jd\n",(intmax_t)getpid());
+    sem_post(sem_pid);
     
 }
