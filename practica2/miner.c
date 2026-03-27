@@ -14,22 +14,85 @@
 #include <stdint.h>
 #include <stdatomic.h>
 #include <signal.h>
-#include<unistd.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <pthread.h>
 
 #define PID_FILE "pids.pid"
 #define TARGET_FILE "target.tgt"
 #define SEM_NAME_PID "/miner_pid"
 
+sem_t *sem_pid=NULL;
+sem_t* sem_votes=NULL;
+sem_t* sem_winner=NULL;
+
+void print_all_miners(FILE *f) {
+    rewind(f);
+    int pid;
+    printf("Current miners in system: \n");
+    while (fscanf(f, "%d", &pid) == 1) {
+        fprintf(stdout,"  %d\n", pid);
+    }
+}
+
 void alarm_handler(int sig)
-{
-    FILE *pidFile=
+{   
+    int  pid;
+    pid_t myPid;
+    int remaining_miner=0;
+    sem_wait(sem_pid);
+    FILE *pidFile=fopen(PID_FILE,"r+");
+    FILE *tempFile=fopen("temp.pid","w+");
+    if(pidFile==NULL || tempFile==NULL)
+    {   
+        if(pidFile!=NULL)fclose(pidFile);
+        if(tempFile!=NULL)fclose(tempFile);
+        perror("Error fichero");
+        sem_post(sem_pid);
+        exit(EXIT_FAILURE);
+    }
+
+    myPid=getpid();
+    while(fscanf(pidFile,"%d",&pid)==1)
+    {
+        if((pid_t)pid!=myPid)
+        {
+            remaining_miner++;
+            fprintf(tempFile,"%d\n",pid);
+        }
+    }
+
+    if(pidFile!=NULL)fclose(pidFile);
+    if(tempFile!=NULL)fclose(tempFile);
+
+    fprintf(stdout,"Miner %jd exited system\n", (intmax_t)myPid);
+
+    if(remaining_miner==0)
+    {
+        remove(PID_FILE);
+        remove("temp.pid");
+        sem_post(sem_pid);
+        sem_unlink(SEM_NAME_PID);
+        
+    }else{
+        remove(PID_FILE);
+        rename("temp.pid",PID_FILE);
+        FILE *file = fopen(PID_FILE, "r");
+        if (file != NULL) {
+            print_all_miners(file);
+            fclose(file);
+        }
+
+        sem_post(sem_pid);
+    }
+
+    exit(EXIT_SUCCESS);
+
 }
 
 int main(int argc, char *argv[])
-{
-    sem_t *sem_pid=NULL;
-    sem_t* sem_votes=NULL;
-    sem_t* sem_winner=NULL;
+{   
     int n_seconds;
     int n_threads;
     struct sigaction act;
@@ -43,7 +106,7 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    if((sem_pid=sem_open(SEM_NAME_PID,O_CREAT|O_EXCL,S_IRUSR|S_IWUSR,1))==SEM_FAILED)
+    if((sem_pid=sem_open(SEM_NAME_PID,O_CREAT,S_IRUSR|S_IWUSR,1))==SEM_FAILED)
     {
         perror("sem open");
         exit(EXIT_FAILURE);
@@ -51,8 +114,6 @@ int main(int argc, char *argv[])
 
     n_seconds=atoi(argv[1]);
     n_threads=atoi(argv[2]);
-    // write at the file
-    alarm(n_seconds);
 
     // set the sigal action of alrm 
     sigemptyset(&(act.sa_mask));
@@ -67,12 +128,26 @@ int main(int argc, char *argv[])
 
     //store pid in the file
     sem_wait(sem_pid);
-    if(pidFile=fopen(PID_FILE,"a")==NULL)
+
+
+    if((pidFile=fopen(PID_FILE,"a+"))==NULL)
     {
-        sem_post(sem_pid)
-        perror("")
+        sem_post(sem_pid);
+        perror("Error fichero");
+        exit(EXIT_FAILURE);
     }
     fprintf(pidFile,"%jd\n",(intmax_t)getpid());
+    fprintf(stdout,"Miner %jd added to system\n", (intmax_t)getpid());
+    print_all_miners(pidFile);
+    if(pidFile!=NULL)fclose(pidFile);
     sem_post(sem_pid);
-    
+
+    // write at the file
+    alarm(n_seconds);
+
+    while(1)
+    {
+        pause();
+    }
+    return 0;
 }
