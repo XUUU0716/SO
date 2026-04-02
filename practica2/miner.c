@@ -28,22 +28,14 @@
 #define SEM_NAME_WINNER "/miner_winner"
 #define SEM_NAME_VOTE "/miner_vote"
 
+#define MAX_INTENTO 100
+
 #define TARGET_INIT 0
 
 sem_t *sem_pid = NULL;
 sem_t *sem_votes = NULL;
 sem_t *sem_winner = NULL;
 sem_t *sem_target = NULL;
-
-atomic_int globalSolution = 0;
-atomic_int findSolution = 0;
-int globalTarget = 0;
-int n_threads = 0;
-pthread_t *threads;
-Thread_args *args;
-
-volatile sig_atomic_t start_mining = 0;
-volatile sig_atomic_t start_voting = 0;
 
 /**
  * @brief Thread_args
@@ -56,6 +48,16 @@ typedef struct Thread_args
 
 } Thread_args;
 
+atomic_int globalSolution = 0;
+atomic_int findSolution = 0;
+int globalTarget = 0;
+int n_threads = 0;
+pthread_t *threads;
+Thread_args *args;
+
+volatile sig_atomic_t start_mining = 0;
+volatile sig_atomic_t start_voting = 0;
+
 /**
  * @brief MinerMsg
  * This structure store all information that process Miner have to pass to process Registrador
@@ -67,6 +69,12 @@ typedef struct MinerMsg
     int solution; // The solution founded
 } MinerMsg;
 
+/**
+ * @brief This function print all miner 
+ * @author Shaofan Xu
+ *
+ * @param f the file to print
+ */
 void print_all_miners(FILE *f)
 {
     rewind(f);
@@ -78,6 +86,12 @@ void print_all_miners(FILE *f)
     }
 }
 
+/**
+ * @brief This function remove pid from the pid file
+ * @author Shaofan Xu
+ *
+ * @param sig the signal that receive
+ */
 void alarm_handler(int sig)
 {
     int pid;
@@ -121,6 +135,9 @@ void alarm_handler(int sig)
         remove("temp.pid");
         sem_post(sem_pid);
         sem_unlink(SEM_NAME_PID);
+        sem_unlink(SEM_NAME_TARGET);
+        sem_unlink(SEM_NAME_VOTE);
+        sem_unlink(SEM_NAME_WINNER);
     }
     else
     {
@@ -139,10 +156,23 @@ void alarm_handler(int sig)
     exit(EXIT_SUCCESS);
 }
 
+/**
+ * @brief This function set a flag to true, start minering
+ * @author Shaofan Xu
+ *
+ * @param sig the signal that receive
+ */
 void sigusr1_handler(int sig)
 {
     start_mining = 1;
 }
+
+/**
+ * @brief This function set a flag to true, start voting
+ * @author Shaofan Xu
+ *
+ * @param sig the signal that receive
+ */
 void sigusr2_handler(int sig)
 {
     start_voting = 1;
@@ -173,18 +203,27 @@ void *miner(void *arg)
 int main(int argc, char *argv[])
 {
     int n_seconds;
+    int ronda = 0;
     int is_first_miner = 0;
     struct sigaction pid_act, sigusr1_act, sigusr2_act;
     int temp;
     int total_miners = 0;
     int solution_escrita = 0;
     int is_winner = 0;
-    int my_coins=0;
+    int my_coins = 0;
+
+    char reg_filename[64];
 
     FILE *checkFile = NULL;
     FILE *targetFile = NULL;
     FILE *pidFile = NULL;
     FILE *voteFile = NULL;
+    FILE *regFile = NULL;
+
+    sem_unlink(SEM_NAME_PID);
+    sem_unlink(SEM_NAME_TARGET);
+    sem_unlink(SEM_NAME_VOTE);
+    sem_unlink(SEM_NAME_WINNER);
 
     // Argument comprobation
     if (argc < 3)
@@ -283,17 +322,19 @@ int main(int argc, char *argv[])
     alarm(n_seconds);
 
     if (is_first_miner)
-    {
+    {   
+        remove(VOTE_FILE);
+        remove(TARGET_FILE);
         sem_wait(sem_target);
         if ((targetFile = fopen(TARGET_FILE, "w+")) == NULL)
         {
             perror("Error fichero");
-            sem_post(sem_pid);
             sem_post(sem_target);
             exit(EXIT_FAILURE);
         }
         fprintf(targetFile, "%d", TARGET_INIT);
         fclose(targetFile);
+        sem_post(sem_target);
 
         while (total_miners < 2)
         {
@@ -302,7 +343,6 @@ int main(int argc, char *argv[])
             {
                 perror("Error fichero");
                 sem_post(sem_pid);
-                sem_post(sem_target);
                 exit(EXIT_FAILURE);
             }
             total_miners = 0;
@@ -339,9 +379,10 @@ int main(int argc, char *argv[])
     {
         if (start_mining == 1)
         {
+            ronda++;
             start_mining = 0;
             findSolution = 0;
-
+            start_voting = 0;
             sem_wait(sem_target);
             targetFile = fopen(TARGET_FILE, "r");
             if (targetFile != NULL)
@@ -400,7 +441,7 @@ int main(int argc, char *argv[])
 
             if (findSolution == 1)
             {
-                //Intenta ser el winner
+                // Intenta ser el winner
                 if (sem_trywait(sem_winner) == 0)
                 {
                     is_winner = 1;
@@ -414,6 +455,7 @@ int main(int argc, char *argv[])
                         exit(EXIT_FAILURE);
                     }
                     fprintf(targetFile, "%d", globalSolution);
+                    fclose(targetFile);
                     sem_post(sem_target);
 
                     sem_wait(sem_pid);
@@ -429,6 +471,12 @@ int main(int argc, char *argv[])
                         }
                         fclose(pidFile);
                     }
+                    else
+                    {
+                        sem_post(sem_pid);
+                        sem_post(sem_winner);
+                        exit(EXIT_FAILURE);
+                    }
                     sem_post(sem_pid);
 
                     start_voting = 1;
@@ -437,7 +485,7 @@ int main(int argc, char *argv[])
             if (is_winner == 1)
             {
 
-                int expected_votes = -1;    //Debe ser 0, pero quitando a si mismo da -1;
+                int expected_votes = -1; // Debe ser 0, pero quitando a si mismo da -1;
                 sem_wait(sem_pid);
                 pidFile = fopen(PID_FILE, "r");
                 if (pidFile == NULL)
@@ -446,13 +494,14 @@ int main(int argc, char *argv[])
                     sem_post(sem_pid);
                     exit(EXIT_FAILURE);
                 }
-                while (fscanf(pidFile, "%d", &temp) == 1) {
-                        expected_votes++;
+                while (fscanf(pidFile, "%d", &temp) == 1)
+                {
+                    expected_votes++;
                 }
                 fclose(pidFile);
                 sem_post(sem_pid);
 
-                //Contar los votos
+                // Contar los votos
                 int total_votes = 0;
                 int intentos = 0;
                 int y_votes = 0;
@@ -466,7 +515,7 @@ int main(int argc, char *argv[])
                     n_votes = 0;
                     intentos++;
                     sem_wait(sem_votes);
-                    voteFile = fopen(VOTE_FILE, "a+");
+                    voteFile = fopen(VOTE_FILE, "r");
                     if (voteFile == NULL)
                     {
                         sem_post(sem_votes);
@@ -475,36 +524,61 @@ int main(int argc, char *argv[])
                     while (fscanf(voteFile, " %c", &vote) == 1)
                     {
                         total_votes++;
-                        if (vote=='Y')
+                        if (vote == 'Y')
                             y_votes++;
-                        else if (vote=='N')
+                        else if (vote == 'N')
                             n_votes++;
                     }
                     fclose(voteFile);
                     sem_post(sem_votes);
                 }
-                fprintf(stdout,"Winner %jd => [ ", (intmax_t)getpid());
-                for(int i=0; i<y_votes; i++) fprintf(stdout,"Y ");
-                for(int i=0; i<n_votes; i++) fprintf(stdout,"N ");
-                
-                if (y_votes >= n_votes) {
-                    fprintf(stdout,"] => Accepted\n");
+                fprintf(stdout, "Winner %jd => [ ", (intmax_t)getpid());
+                for (int i = 0; i < y_votes; i++)
+                    fprintf(stdout, "Y ");
+                for (int i = 0; i < n_votes; i++)
+                    fprintf(stdout, "N ");
+
+                if (y_votes >= n_votes)
+                {
+                    fprintf(stdout, "] => Accepted\n");
                     my_coins++;
-                } else {
-                    fprintf(stdout,"] => Rejected\n");
+
+                    sprintf(reg_filename, "%jd.txt", (intmax_t)getpid());
+
+                    regFile = fopen(reg_filename, "a");
+                    if (regFile == NULL)
+                    {
+                        exit(EXIT_FAILURE);
+                    }
+                    // Imprime el resultado
+                    fprintf(regFile, "Id:         %d\n", ronda);
+                    fprintf(regFile, "Winner:     %jd\n", (intmax_t)getpid());
+                    fprintf(regFile, "Target:     %d\n", globalTarget);
+                    fprintf(regFile, "Solution:   %d (validated)\n", globalSolution);
+                    fprintf(regFile, "Votes:      %d/%d\n", y_votes, expected_votes);
+                    fprintf(regFile, "Wallets:    %jd:%d\n", (intmax_t)getpid(), my_coins);
+                    fprintf(regFile, "\n");
+                    fclose(regFile);
+                }
+                else
+                {
+                    fprintf(stdout, "] => Rejected\n");
                 }
 
                 // vaciar el archivo
                 sem_wait(sem_votes);
                 voteFile = fopen(VOTE_FILE, "w");
-                if(voteFile != NULL) fclose(voteFile);
+                if (voteFile != NULL)
+                    fclose(voteFile);
                 sem_post(sem_votes);
 
                 // Actualizar target
-                if (y_votes >= n_votes) { 
+                if (y_votes >= n_votes)
+                {
                     sem_wait(sem_target);
                     targetFile = fopen(TARGET_FILE, "w");
-                    if (targetFile != NULL) {
+                    if (targetFile != NULL)
+                    {
                         fprintf(targetFile, "%d", globalSolution);
                         fclose(targetFile);
                     }
@@ -513,24 +587,27 @@ int main(int argc, char *argv[])
 
                 sem_post(sem_winner);
 
-                //Empezar nueva ronda
+                // Empezar nueva ronda
                 sem_wait(sem_pid);
                 pidFile = fopen(PID_FILE, "r");
-                if (pidFile != NULL) {
+                if (pidFile != NULL)
+                {
 
-                    while (fscanf(pidFile, "%d", &temp) == 1) {
+                    while (fscanf(pidFile, "%d", &temp) == 1)
+                    {
                         kill(temp, SIGUSR1);
                     }
                     fclose(pidFile);
                 }
                 sem_post(sem_pid);
-                is_winner=0;
+                is_winner = 0;
             }
             else
             {
-                //Votacion
-                while (start_voting == 0) {
-                    pause(); 
+                // Votacion
+                while (start_voting == 0)
+                {
+                    pause();
                 }
                 sem_wait(sem_target);
                 targetFile = fopen(TARGET_FILE, "r");
@@ -540,6 +617,8 @@ int main(int argc, char *argv[])
                     perror("Error fichero");
                     exit(EXIT_FAILURE);
                 }
+
+                // Lee la solucion escrita
                 fscanf(targetFile, "%d", &solution_escrita);
                 fclose(targetFile);
                 sem_post(sem_target);
@@ -551,7 +630,7 @@ int main(int argc, char *argv[])
                     sem_post(sem_votes);
                     exit(EXIT_FAILURE);
                 }
-                //Vota yes o no
+                // Vota yes o no, comprobando la solucion
                 if (pow_hash(solution_escrita) == globalTarget)
                 {
                     fprintf(voteFile, "Y\n");
@@ -562,10 +641,13 @@ int main(int argc, char *argv[])
                 }
                 fclose(voteFile);
                 sem_post(sem_votes);
-                start_voting=0;
+                start_voting = 0;
             }
         }
-        if (start_mining == 0 && start_voting == 0) {
+
+        // Si no hay ningun señal, se espera
+        if (start_mining == 0 && start_voting == 0)
+        {
             pause();
         }
     }
