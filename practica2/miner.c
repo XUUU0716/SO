@@ -36,6 +36,8 @@ typedef struct Thread_args
 #define SEM_NAME_WINNER "/miner_winner"
 #define SEM_NAME_VOTE "/miner_vote"
 
+#define MAX_INTENTO 100
+
 #define TARGET_INIT 0
 
 sem_t *sem_pid = NULL;
@@ -65,6 +67,12 @@ typedef struct MinerMsg
     int solution; // The solution founded
 } MinerMsg;
 
+/**
+ * @brief This function print all miner 
+ * @author Shaofan Xu
+ *
+ * @param f the file to print
+ */
 void print_all_miners(FILE *f)
 {
     rewind(f);
@@ -139,6 +147,13 @@ void sigusr1_handler(int sig)
 {
     start_mining = 1;
 }
+
+/**
+ * @brief This function set a flag to true, start voting
+ * @author Shaofan Xu
+ *
+ * @param sig the signal that receive
+ */
 void sigusr2_handler(int sig)
 {
     start_voting = 1;
@@ -181,6 +196,12 @@ int main(int argc, char *argv[])
     FILE *targetFile = NULL;
     FILE *pidFile = NULL;
     FILE *voteFile = NULL;
+    FILE *regFile = NULL;
+
+    sem_unlink(SEM_NAME_PID);
+    sem_unlink(SEM_NAME_TARGET);
+    sem_unlink(SEM_NAME_VOTE);
+    sem_unlink(SEM_NAME_WINNER);
 
     sigemptyset(&mask_block);
     sigaddset(&mask_block, SIGUSR1);
@@ -295,6 +316,7 @@ int main(int argc, char *argv[])
 
         if (start_mining == 1)
         {
+            ronda++;
             start_mining = 0;
             findSolution = 0;
             while (sem_wait(sem_target) == -1 && errno == EINTR)
