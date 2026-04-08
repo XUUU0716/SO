@@ -19,6 +19,10 @@
 #include <errno.h>
 #include "pow.h"
 
+/**
+ * @brief Thread_args
+ * This structure store all information of argument needed to executed the function
+ */
 typedef struct Thread_args
 {
     long int start;
@@ -62,7 +66,7 @@ void print_all_miners(FILE *f)
     }
 }
 
-void miner_shutdown()
+void miner_shutdown(void)
 {
     int pid, remaining_miner = 0;
     pid_t myPid = getpid();
@@ -112,12 +116,34 @@ void miner_shutdown()
     sem_close(sem_votes);
 
     exit(EXIT_SUCCESS);
-}
+}   
 
+/**
+ * @brief Handler functon of alarm sign
+ * @author Javier Santa
+ */
 void alarm_handler(int sig) { time_to_exit = 1; }
+
+/**
+ * @brief Handler functon of sigusr1 to start the round
+ * @author Shaofan Xu
+ */
 void sigusr1_handler(int sig) { start_mining = 1; }
+
+/**
+ * @brief Handler functon of sigusr2 to start voting for the winner
+ * @author Shaofan Xu
+ */
 void sigusr2_handler(int sig) { start_voting = 1; }
 
+
+/**
+ * @brief This function try to solve a hash problem by brute force
+ * @author Shaofan Xu
+ *
+ * @param arg pointer to parameter of function
+ * @return NULL
+ */
 void *miner(void *arg)
 {
     Thread_args *t = (Thread_args *)arg;
@@ -160,7 +186,7 @@ int main(int argc, char *argv[])
     sigaddset(&mask_block, SIGUSR2);
     sigaddset(&mask_block, SIGALRM);
     sigemptyset(&mask_empty);
-
+    //Argument comprobation
     if (sigprocmask(SIG_BLOCK, &mask_block, NULL) < 0)
     {
         perror("sigprocmask");

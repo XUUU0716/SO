@@ -1,5 +1,5 @@
 EXE=miner
-CC=gcc -pedantic
+CC=gcc -pedantic 
 CFLAGS=-Wall
 
 .PHONY: all clean test valgrind clean_semaforos
@@ -16,7 +16,7 @@ $(EXE): miner.o pow.o
 	$(CC) $(CFLAGS) -c $< -o $@
 
 test:
-	./miner 10 8 & ./miner 10 8 & ./miner 10 8 & ./miner 10 1
+	./miner 3 8 & ./miner 5 8 & ./miner 10 8 & ./miner 10 1
 
 valgrind:
 	valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes ./miner 10 4
