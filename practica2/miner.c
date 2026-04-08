@@ -2,10 +2,8 @@
  * @brief It defines a simulation of blockchain and minering
  *
  * @file miner.c
- * @author Shaofan Xu, Javier Santa Maria
- * @version 0
- * @date 13-03-2026
- * @copyright GNU Public License
+ * @author Shaofan Xu, Javier Santamaria
+ * @version 1.0
  */
 #include <semaphore.h>
 #include <stdlib.h>
@@ -25,7 +23,6 @@ typedef struct Thread_args
 {
     long int start;
     long int end;
-
 } Thread_args;
 
 #define PID_FILE "pids.pid"
@@ -35,8 +32,6 @@ typedef struct Thread_args
 #define SEM_NAME_TARGET "/miner_target"
 #define SEM_NAME_WINNER "/miner_winner"
 #define SEM_NAME_VOTE "/miner_vote"
-
-#define MAX_INTENTO 100
 
 #define TARGET_INIT 0
 
@@ -56,23 +51,6 @@ Thread_args *args;
 volatile sig_atomic_t start_mining = 0;
 volatile sig_atomic_t start_voting = 0;
 
-/**
- * @brief MinerMsg
- * This structure store all information that process Miner have to pass to process Registrador
- */
-typedef struct MinerMsg
-{
-    int round;    // The round of the game
-    int target;   // The target that are searching
-    int solution; // The solution founded
-} MinerMsg;
-
-/**
- * @brief This function print all miner 
- * @author Shaofan Xu
- *
- * @param f the file to print
- */
 void print_all_miners(FILE *f)
 {
     rewind(f);
@@ -89,8 +67,7 @@ void miner_shutdown()
     int pid, remaining_miner = 0;
     pid_t myPid = getpid();
 
-    while (sem_wait(sem_pid) == -1 && errno == EINTR)
-        ;
+    while (sem_wait(sem_pid) == -1 && errno == EINTR);
 
     FILE *pidFile = fopen(PID_FILE, "r");
     FILE *tempFile = fopen("temp.pid", "w");
@@ -129,7 +106,6 @@ void miner_shutdown()
     }
 
     sem_post(sem_pid);
-
     sem_close(sem_pid);
     sem_close(sem_target);
     sem_close(sem_winner);
@@ -138,43 +114,25 @@ void miner_shutdown()
     exit(EXIT_SUCCESS);
 }
 
-void alarm_handler(int sig)
-{
-    time_to_exit = 1;
-}
+void alarm_handler(int sig) { time_to_exit = 1; }
+void sigusr1_handler(int sig) { start_mining = 1; }
+void sigusr2_handler(int sig) { start_voting = 1; }
 
-void sigusr1_handler(int sig)
-{
-    start_mining = 1;
-}
-
-/**
- * @brief This function set a flag to true, start voting
- * @author Shaofan Xu
- *
- * @param sig the signal that receive
- */
-void sigusr2_handler(int sig)
-{
-    start_voting = 1;
-}
-
-/**
- * @brief This function try to solve a hash problem by brute force
- * @author Shaofan Xu
- *
- * @param arg pointer to parameter of function
- * @return NULL
- */
 void *miner(void *arg)
 {
     Thread_args *t = (Thread_args *)arg;
-    for (long int i = t->start; i < t->end && !findSolution && !start_voting; i++)
+    
+    for (long int i = t->start; i < t->end; i++)
     {
+        if (start_voting || time_to_exit) return NULL;
+
         if (pow_hash(i) == globalTarget)
         {
-            findSolution = 1;
-            globalSolution = i;
+            if (sem_trywait(sem_winner) == 0)
+            {
+                globalSolution = i;
+                findSolution = 1; 
+            }
             return NULL;
         }
     }
@@ -189,14 +147,13 @@ int main(int argc, char *argv[])
     int solution_escrita = 0;
     int is_winner = 0;
     int my_coins = 0;
-    int round_id = 0; // Para el contador de rondas del log
+    int round_id = 0; 
     struct sigaction pid_act, sigusr1_act, sigusr2_act;
     sigset_t mask_block, mask_empty;
 
     FILE *targetFile = NULL;
     FILE *pidFile = NULL;
     FILE *voteFile = NULL;
-    FILE *regFile = NULL;
 
     sem_unlink(SEM_NAME_PID);
     sem_unlink(SEM_NAME_TARGET);
@@ -247,15 +204,12 @@ int main(int argc, char *argv[])
     sigusr2_act.sa_flags = 0;
     sigaction(SIGUSR2, &sigusr2_act, NULL);
 
-    while (sem_wait(sem_pid) == -1 && errno == EINTR)
-        ;
+    while (sem_wait(sem_pid) == -1 && errno == EINTR);
     FILE *checkFile = fopen(PID_FILE, "r");
-    if (checkFile == NULL)
-        is_first_miner = 1;
+    if (checkFile == NULL) is_first_miner = 1;
     else
     {
-        if (fscanf(checkFile, "%d", &temp) != 1)
-            is_first_miner = 1;
+        if (fscanf(checkFile, "%d", &temp) != 1) is_first_miner = 1;
         fclose(checkFile);
     }
 
@@ -265,6 +219,7 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
     fprintf(pidFile, "%d\n", getpid());
+    printf("Miner %d added to system\n", getpid());
     fclose(pidFile);
     sem_post(sem_pid);
 
@@ -272,8 +227,7 @@ int main(int argc, char *argv[])
 
     if (is_first_miner)
     {
-        while (sem_wait(sem_target) == -1 && errno == EINTR)
-            ;
+        while (sem_wait(sem_target) == -1 && errno == EINTR);
         if ((targetFile = fopen(TARGET_FILE, "w+")) != NULL)
         {
             fprintf(targetFile, "%d", TARGET_INIT);
@@ -283,22 +237,19 @@ int main(int argc, char *argv[])
 
         while (total_miners < 2)
         {
-            while (sem_wait(sem_pid) == -1 && errno == EINTR)
-                ;
+            if (time_to_exit) miner_shutdown();
+            while (sem_wait(sem_pid) == -1 && errno == EINTR);
             if ((pidFile = fopen(PID_FILE, "r")) != NULL)
             {
                 total_miners = 0;
-                while (fscanf(pidFile, "%d", &temp) == 1)
-                    total_miners++;
+                while (fscanf(pidFile, "%d", &temp) == 1) total_miners++;
                 fclose(pidFile);
             }
             sem_post(sem_pid);
-            if (total_miners < 2)
-                sleep(1);
+            if (total_miners < 2) sleep(1);
         }
 
-        while (sem_wait(sem_pid) == -1 && errno == EINTR)
-            ;
+        while (sem_wait(sem_pid) == -1 && errno == EINTR);
         pidFile = fopen(PID_FILE, "r");
         if (pidFile != NULL)
         {
@@ -311,16 +262,14 @@ int main(int argc, char *argv[])
 
     while (1)
     {
-        if (time_to_exit)
-            miner_shutdown();
+        if (time_to_exit) miner_shutdown();
 
         if (start_mining == 1)
         {
-            ronda++;
             start_mining = 0;
             findSolution = 0;
-            while (sem_wait(sem_target) == -1 && errno == EINTR)
-                ;
+
+            while (sem_wait(sem_target) == -1 && errno == EINTR);
             targetFile = fopen(TARGET_FILE, "r");
             if (targetFile != NULL)
             {
@@ -331,21 +280,27 @@ int main(int argc, char *argv[])
 
             args = malloc(sizeof(Thread_args) * n_threads);
             threads = malloc(sizeof(pthread_t) * n_threads);
+
             for (int i = 0; i < n_threads; i++)
             {
                 args[i].start = i * (POW_LIMIT / n_threads);
                 args[i].end = (i + 1) * (POW_LIMIT / n_threads);
                 pthread_create(&threads[i], NULL, miner, &args[i]);
             }
+            
+            sigprocmask(SIG_UNBLOCK, &mask_block, NULL);
             for (int i = 0; i < n_threads; i++)
                 pthread_join(threads[i], NULL);
+            sigprocmask(SIG_BLOCK, &mask_block, NULL);
+
             free(args);
             free(threads);
 
+            if (time_to_exit) miner_shutdown();
+
             if (findSolution == 1 && !start_voting)
             {
-                if (sem_trywait(sem_winner) == 0)
-                    is_winner = 1;
+                is_winner = 1;
             }
         }
 
@@ -353,10 +308,9 @@ int main(int argc, char *argv[])
         {
             is_winner = 0;
             round_id++;
-            int saved_target = globalTarget; 
+            int saved_target = globalTarget;
 
-            while (sem_wait(sem_target) == -1 && errno == EINTR)
-                ;
+            while (sem_wait(sem_target) == -1 && errno == EINTR);
             targetFile = fopen(TARGET_FILE, "w");
             if (targetFile != NULL)
             {
@@ -368,34 +322,36 @@ int main(int argc, char *argv[])
             int expected_votes = 0;
             while (sem_wait(sem_pid) == -1 && errno == EINTR);
             pidFile = fopen(PID_FILE, "r");
-            if (pidFile != NULL) {
-                while (fscanf(pidFile, "%d", &temp) == 1) {
-                    if (temp != getpid()) {
-                        if (kill(temp, SIGUSR2) == 0) {
-                            expected_votes++;
-                        }
+            if (pidFile != NULL)
+            {
+                while (fscanf(pidFile, "%d", &temp) == 1)
+                {
+                    if (temp != getpid())
+                    {
+                        if (kill(temp, SIGUSR2) == 0) expected_votes++;
                     }
                 }
                 fclose(pidFile);
             }
             sem_post(sem_pid);
 
-            if (expected_votes == 0) {
-                usleep(500000); 
-            }
+            if (expected_votes == 0) usleep(500000);
 
             int total_v = 0, y_v = 0, n_v = 0, tries = 0;
             char v_char;
-            
-            while (total_v < expected_votes && tries < 50) {
-                usleep(100000); 
+
+            while (total_v < expected_votes && tries < 50)
+            {
+                usleep(100000);
                 tries++;
                 total_v = 0; y_v = 0; n_v = 0;
 
                 while (sem_wait(sem_votes) == -1 && errno == EINTR);
                 voteFile = fopen(VOTE_FILE, "r");
-                if (voteFile != NULL) {
-                    while (fscanf(voteFile, " %c", &v_char) == 1) {
+                if (voteFile != NULL)
+                {
+                    while (fscanf(voteFile, " %c", &v_char) == 1)
+                    {
                         if (v_char == 'Y') { y_v++; total_v++; }
                         else if (v_char == 'N') { n_v++; total_v++; }
                     }
@@ -405,10 +361,8 @@ int main(int argc, char *argv[])
             }
 
             printf("Winner %d -> [ ", getpid());
-            for (int i = 0; i < y_v; i++)
-                printf("Y ");
-            for (int i = 0; i < n_v; i++)
-                printf("N ");
+            for (int i = 0; i < y_v; i++) printf("Y ");
+            for (int i = 0; i < n_v; i++) printf("N ");
 
             if (y_v >= n_v && (expected_votes == 0 || total_v > 0))
             {
@@ -432,18 +386,24 @@ int main(int argc, char *argv[])
             else
             {
                 printf("] -> Rejected\n");
+                while (sem_wait(sem_target) == -1 && errno == EINTR);
+                targetFile = fopen(TARGET_FILE, "w");
+                if (targetFile) {
+                    fprintf(targetFile, "%d", saved_target);
+                    fclose(targetFile);
+                }
+                sem_post(sem_target);
             }
             fflush(stdout);
 
-            while (sem_wait(sem_votes) == -1 && errno == EINTR)
-                ;
+            while (sem_wait(sem_votes) == -1 && errno == EINTR);
             voteFile = fopen(VOTE_FILE, "w");
-            if (voteFile != NULL)
-                fclose(voteFile);
+            if (voteFile != NULL) fclose(voteFile);
             sem_post(sem_votes);
 
-            while (sem_wait(sem_pid) == -1 && errno == EINTR)
-                ;
+            sem_post(sem_winner);
+
+            while (sem_wait(sem_pid) == -1 && errno == EINTR);
             pidFile = fopen(PID_FILE, "r");
             if (pidFile != NULL)
             {
@@ -452,14 +412,12 @@ int main(int argc, char *argv[])
                 fclose(pidFile);
             }
             sem_post(sem_pid);
-            sem_post(sem_winner);
         }
 
         if (start_voting == 1)
         {
             start_voting = 0;
-            while (sem_wait(sem_target) == -1 && errno == EINTR)
-                ;
+            while (sem_wait(sem_target) == -1 && errno == EINTR);
             targetFile = fopen(TARGET_FILE, "r");
             if (targetFile != NULL)
             {
@@ -468,8 +426,7 @@ int main(int argc, char *argv[])
             }
             sem_post(sem_target);
 
-            while (sem_wait(sem_votes) == -1 && errno == EINTR)
-                ;
+            while (sem_wait(sem_votes) == -1 && errno == EINTR);
             voteFile = fopen(VOTE_FILE, "a+");
             if (voteFile != NULL)
             {
