@@ -155,11 +155,6 @@ int main(int argc, char *argv[])
     FILE *pidFile = NULL;
     FILE *voteFile = NULL;
 
-    sem_unlink(SEM_NAME_PID);
-    sem_unlink(SEM_NAME_TARGET);
-    sem_unlink(SEM_NAME_VOTE);
-    sem_unlink(SEM_NAME_WINNER);
-
     sigemptyset(&mask_block);
     sigaddset(&mask_block, SIGUSR1);
     sigaddset(&mask_block, SIGUSR2);
