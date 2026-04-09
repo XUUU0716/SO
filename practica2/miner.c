@@ -6,6 +6,8 @@
  * @version 1.0
  * @date 9/03/2026
  */
+#define _GNU_SOURCE
+
 #include <semaphore.h>
 #include <stdlib.h>
 #include <stdio.h>
