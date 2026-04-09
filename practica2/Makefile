@@ -16,10 +16,12 @@ $(EXE): miner.o pow.o
 	$(CC) $(CFLAGS) -c $< -o $@
 
 test:
-	./miner 3 8 & ./miner 5 8 & ./miner 10 8 & ./miner 10 1
+	./miner 10 8 & ./miner 8 8 & ./miner 10 8 & ./miner 10 1 & ./miner 10 8 & ./miner 8 8 & ./miner 10 8 & ./miner 10 1
 
 valgrind:
-	valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes ./miner 10 4
+	valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes --log-file="val_log_%p.txt" ./miner 5 4 & \
+	valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes --log-file="val_log_%p.txt" ./miner 8 2 & \
+	valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes --log-file="val_log_%p.txt" ./miner 10 2
 
 clean:
 	rm -f *.o $(EXE) *.txt *.tgt *.pid
