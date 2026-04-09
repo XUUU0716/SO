@@ -116,8 +116,9 @@ Se probaron situaciones anómalas como:
     \caption{La ejecución demuestra que el sistema es totalmente robusto y no sufre \textit{deadlocks}: 
     Ambos procesos se registran correctamente y logran votar de forma concurrente (\texttt{[ Y ] -> Accepted}). 
     Cuando el minero de 2 segundos agota su alarma, sale de forma ordenada, actualiza el contador de procesos restantes y 
-    libera sus recursos sin interrumpir al otro. El minero de 8 segundos detecta inmediatamente que se ha quedado solo (0 votos esperados).
-     En lugar de quedarse colgado esperando un \texttt{SIGUSR2} que nunca llegará, el sistema sigue funcionando y auto-aprueba las rondas (\texttt{[ ] -> Accepted}). 
+    libera sus recursos sin interrumpir al otro. El minero de 8 segundos detecta inmediatamente que se ha quedado solo. 
+    Cumpliendo con los requisitos, el sistema entra en espera pasiva sin consumir recursos de forma innecesaria hasta que se 
+    agota su tiempo y limpia el sistema.
      Al expirar el tiempo del último minero, este detecta que es el único que queda en el sistema y se encarga de ejecutar los \texttt{sem\_unlink} y 
      eliminar los ficheros \texttt{.tgt}, \texttt{.pid} y \texttt{.txt}, dejando el entorno completamente limpio (System cleaned) y evitando fugas de memoria en el sistema operativo.}
 \end{figure}

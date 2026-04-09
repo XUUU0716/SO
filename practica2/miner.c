@@ -4,6 +4,7 @@
  * @file miner.c
  * @author Shaofan Xu, Javier Santamaria
  * @version 1.0
+ * @date 9/03/2026
  */
 #include <semaphore.h>
 #include <stdlib.h>
@@ -164,7 +165,7 @@ void *miner(void *arg)
 
         if (pow_hash(i) == globalTarget)
         {
-    
+
             globalSolution = i;
             findSolution = 1;
             return NULL;
@@ -195,7 +196,7 @@ int main(int argc, char *argv[])
     sigemptyset(&mask_block);
     sigaddset(&mask_block, SIGUSR1);
     sigaddset(&mask_block, SIGUSR2);
-    sigaddset(&mask_block, SIGALRM);
+    // sigaddset(&mask_block, SIGALRM);
     sigemptyset(&mask_empty);
 
     // Argument comprobation
@@ -267,7 +268,7 @@ int main(int argc, char *argv[])
     // Si es primero establece el primer target
     if (is_first_miner)
     {
-        remove(VOTE_FILE); 
+        remove(VOTE_FILE);
         remove(TARGET_FILE);
         while (sem_wait(sem_target) == -1 && errno == EINTR)
             ;
@@ -326,7 +327,8 @@ int main(int argc, char *argv[])
             start_voting = 0;
 
             // Intenta leer el target
-            while (sem_wait(sem_target) == -1 && errno == EINTR);
+            while (sem_wait(sem_target) == -1 && errno == EINTR)
+                ;
             targetFile = fopen(TARGET_FILE, "r");
             if (targetFile != NULL)
             {
@@ -437,8 +439,8 @@ int main(int argc, char *argv[])
 
             if (expected_votes == 0)
                 usleep(500000);
-            
-            //Contar votos
+
+            // Contar votos
             int total_v = 0, y_v = 0, n_v = 0, tries = 0;
             char v_char;
 
@@ -472,16 +474,16 @@ int main(int argc, char *argv[])
                 }
                 sem_post(sem_votes);
             }
-            //Imprimir resultados
-            fprintf(stdout,"Winner %d => [ ", getpid());
+            // Imprimir resultados
+            fprintf(stdout, "Winner %d => [ ", getpid());
             for (int i = 0; i < y_v; i++)
-                fprintf(stdout,"Y ");
+                fprintf(stdout, "Y ");
             for (int i = 0; i < n_v; i++)
-                fprintf(stdout,"N ");
+                fprintf(stdout, "N ");
 
             if (y_v >= n_v)
             {
-                fprintf(stdout,"] => Accepted\n");
+                fprintf(stdout, "] => Accepted\n");
                 my_coins++;
 
                 char log_name[32];
@@ -498,7 +500,8 @@ int main(int argc, char *argv[])
                     fclose(logFile);
                 }
 
-                while (sem_wait(sem_target) == -1 && errno == EINTR);
+                while (sem_wait(sem_target) == -1 && errno == EINTR)
+                    ;
                 targetFile = fopen(TARGET_FILE, "w");
                 if (targetFile)
                 {
@@ -532,6 +535,38 @@ int main(int argc, char *argv[])
             sem_post(sem_winner);
 
             // Iniciar nueva ronda
+            int current_miners = 0;
+
+            while (sem_wait(sem_pid) == -1 && errno == EINTR)
+                ;
+            pidFile = fopen(PID_FILE, "r");
+            if (pidFile != NULL)
+            {
+                while (fscanf(pidFile, "%d", &temp) == 1)
+                    current_miners++;
+                fclose(pidFile);
+            }
+            sem_post(sem_pid);
+
+            while (current_miners < 2)
+            {
+                if (time_to_exit)
+                    miner_shutdown();
+                sleep(1);
+
+                current_miners = 0;
+                while (sem_wait(sem_pid) == -1 && errno == EINTR)
+                    ;
+                pidFile = fopen(PID_FILE, "r");
+                if (pidFile != NULL)
+                {
+                    while (fscanf(pidFile, "%d", &temp) == 1)
+                        current_miners++;
+                    fclose(pidFile);
+                }
+                sem_post(sem_pid);
+            }
+
             while (sem_wait(sem_pid) == -1 && errno == EINTR)
                 ;
             pidFile = fopen(PID_FILE, "r");
@@ -545,13 +580,13 @@ int main(int argc, char *argv[])
             is_winner = 0;
         }
         else
-        {   
-            //Proceso de votacion
+        {
+            // Proceso de votacion
             if (start_voting == 1)
             {
                 start_voting = 0;
 
-                //Intenta leer target
+                // Intenta leer target
                 while (sem_wait(sem_target) == -1 && errno == EINTR)
                     ;
                 targetFile = fopen(TARGET_FILE, "r");

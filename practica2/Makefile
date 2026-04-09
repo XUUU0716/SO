@@ -21,7 +21,8 @@ test:
 valgrind:
 	valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes --log-file="val_log_%p.txt" ./miner 5 4 & \
 	valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes --log-file="val_log_%p.txt" ./miner 8 2 & \
-	valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes --log-file="val_log_%p.txt" ./miner 10 2
+	valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes --log-file="val_log_%p.txt" ./miner 10 2 & \
+	valgrind --tool=helgrind ./miner 5 4
 
 clean:
 	rm -f *.o $(EXE) *.txt *.tgt *.pid
