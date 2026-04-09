@@ -122,6 +122,20 @@ Se probaron situaciones anómalas como:
      Al expirar el tiempo del último minero, este detecta que es el único que queda en el sistema y se encarga de ejecutar los \texttt{sem\_unlink} y 
      eliminar los ficheros \texttt{.tgt}, \texttt{.pid} y \texttt{.txt}, dejando el entorno completamente limpio (System cleaned) y evitando fugas de memoria en el sistema operativo.}
 \end{figure}
+
+\subsection{Pruebas con valgrind}
+Para garantizar la robustez del sistema, se analizó el código utilizando Valgrind (se puede ejecutar con \texttt{make valgrind}). 
+Los resultados confirmaron que no existen fugas de memoria tras la limpieza del último minero.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\textwidth]{image5.png}
+    \caption{En la captura, muestra la ejecución del programa con valgrind, donde las salidas de valgrind se ha redireccionado a ficheros}.
+\end{figure}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\textwidth]{image6.png}
+    \caption{Ejemplo de salida de valgrind, donde podemos ver que no hay problema de fuga de memoria}.
+\end{figure}
 \section{Conclusión y Respuesta a las cuestiones del enunciado}
 \begin{description}
     \item[Pregunta a:] \textbf{¿Se produce algún problema de concurrencia en el sistema descrito?} \hfill \\
@@ -130,7 +144,7 @@ Se probaron situaciones anómalas como:
     ya que al ser procesos independientes, varios podrían intentar escribir o leer a la vez, corrompiendo los datos. También hay un problema de 
     ``condición de carrera'' al final de cada ronda: varios mineros pueden encontrar una solución válida casi al mismo tiempo y ambos intentarían 
     proclamarse ganadores simultáneamente.
-\clearpage
+    
     \item[Pregunta b:] \textbf{¿Cómo se ha solucionado en el planteamiento dado?} \hfill \\
     La solución se basa en el uso de semáforos con nombre de POSIX que actúan como mutex para garantizar la exclusión mutua. 
     Cada vez que un proceso necesita acceder a un fichero, debe adquirir el semáforo correspondiente (\texttt{sem\_pid}, \texttt{sem\_target}, 
