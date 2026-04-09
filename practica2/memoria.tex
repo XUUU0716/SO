@@ -4,6 +4,8 @@
 \usepackage{listings}
 \usepackage[T1]{fontenc}
 \usepackage{float}
+\usepackage[spanish]{babel}
+\usepackage{geometry}
 
 \title{\textbf{Sistemas Operativos: Práctica 2}}
 \author{
@@ -46,7 +48,7 @@ Se han implementado correctamente los siguientes objetivos principales de la pr�
     \texttt{while (sem\_wait(...) == -1 \&\& errno == EINTR);}.
     Así, si una señal despierta al proceso por error, este vuelve a intentar.
     \item \textbf{Espera pasiva con sigsuspend:} Para cumplir con el enunciado y no freír la CPU con esperas activas, cuando el minero no está minando, 
-    ni votando, ni gestionando la victoria, se pone a dormir llamando a \texttt{sigsuspend(\&mask\_empty)}. Esto vacía la máscara de bloqueos temporalmente
+    ni votando, ni gestionando la victoria, se pone a dormir llamando a \texttt{ sigsuspend(\&mask\_empty) }. Esto vacía la máscara de bloqueos temporalmente
      y deja al proceso suspendido hasta que llega una señal que lo despierta para la siguiente fase.
     \item \textbf{Evitar deadlocks en los hilos:} Durante las pruebas a menudo sucude que un proceso estaba bloqueado en el \texttt{pthread\_join} esperando a sus hilos y otro minero ganaba la ronda,
      el proceso bloqueado no podía recibir la señal \texttt{SIGUSR2} para ir a votar (se quedaba colgado).
@@ -77,10 +79,10 @@ Se ejecutó el programa con parámetros correspondientes:
 \begin{lstlisting}[language=bash]
 ./miner 3 8 & ./miner 5 8 & ./miner 10 8 & ./miner 10 1
 \end{lstlisting}
-El programa generó correctamente los archivo \texttt{.log} con la estructura especificada(Id, ronda, target, solución, etc ), y la validación (accepted/rejected). Así imprimiendo en la terminal exactamente los mensajes requeridos:
+El programa generó correctamente los archivo \texttt{.log} con la estructura especificada (Id, ronda, target, solución, etc), y la validación (accepted/rejected). Así imprimiendo en la terminal exactamente los mensajes requeridos:
 \begin{figure}[H]
     \centering
-    \includegraphics[width=1\textwidth]{image0.png}
+    \includegraphics[width=0.8\textwidth]{image0.png}
     \caption{Ejecución de programa demostrando el proceso de entrada de los procesos mineros, los procesos minando, y destrucción del fichero cuando termina el último proceso }
 \end{figure}
 
@@ -95,7 +97,7 @@ Se probaron situaciones anómalas como:
     \centering
     \includegraphics[width=1\textwidth]{image1.png}
     \caption{Ejecución de 4 mineros simultáneos durante 10 segundos. Se lanzaron dos procesos con 8 hilos y dos procesos con 1 hilo.
-     Como se observa en las líneas de 'Winner', los PIDs correspondientes a los procesos con 8 hilos acaparan la inmensa mayoría de 
+     Como se observa en las líneas de `Winner', los PIDs correspondientes a los procesos con 8 hilos acaparan la inmensa mayoría de 
      las victorias en las rondas, demostrando que un mayor número de hilos permite explorar el espacio de hashes (\textit{Proof of Work}) de
       forma mucho más rápida y eficiente, ganando la condición de carrera por el semáforo \texttt{sem\_winner}.}
 \end{figure}
@@ -104,7 +106,7 @@ Se probaron situaciones anómalas como:
     \centering
     \includegraphics[width=1\textwidth]{image3.png}
     \caption{Registro de victorias generado por el proceso 8129. Como se puede observar, el minero ha registrado correctamente 
-    el 'Target' y la 'Solution' de cada ronda, contabilizando los votos a favor (Y) de los demás procesos. El campo 'Wallets' 
+    el `Target' y la `Solution' de cada ronda, contabilizando los votos a favor (Y) de los demás procesos. El campo 'Wallets' 
     demuestra que el incremento de monedas locales se gestiona de forma segura tras la validación de la red.}
 \end{figure}
 
@@ -120,17 +122,30 @@ Se probaron situaciones anómalas como:
      eliminar los ficheros \texttt{.tgt}, \texttt{.pid} y \texttt{.txt}, dejando el entorno completamente limpio (System cleaned) y evitando fugas de memoria en el sistema operativo.}
 \end{figure}
 \section{Conclusión y Respuesta a las cuestiones del enunciado}
-\textbf{Pregunta a) ¿Se produce algún problema de concurrencia en el sistema descrito?}
+\begin{description}
+    \item[Pregunta a:] \textbf{¿Se produce algún problema de concurrencia en el sistema descrito?} \hfill \\
+    Sí, el sistema tiene varios puntos donde la concurrencia puede causar fallos. 
+    El problema principal es el acceso a los ficheros compartidos como \texttt{pids.pid}, \texttt{target.tgt} y \texttt{vote.txt}, 
+    ya que al ser procesos independientes, varios podrían intentar escribir o leer a la vez, corrompiendo los datos. También hay un problema de 
+    ``condición de carrera'' al final de cada ronda: varios mineros pueden encontrar una solución válida casi al mismo tiempo y ambos intentarían 
+    proclamarse ganadores simultáneamente.
+\clearpage
+    \item[Pregunta b:] \textbf{¿Cómo se ha solucionado en el planteamiento dado?} \hfill \\
+    La solución se basa en el uso de semáforos con nombre de POSIX que actúan como mutex para garantizar la exclusión mutua. 
+    Cada vez que un proceso necesita acceder a un fichero, debe adquirir el semáforo correspondiente (\texttt{sem\_pid}, \texttt{sem\_target}, 
+    \texttt{sem\_votes}). Para la competición por la victoria, se utiliza el semáforo \texttt{sem\_winner} con la función \texttt{sem\_trywait}, 
+    lo que asegura que solo el primer minero en realizar la llamada se convierta en el ganador oficial. Asimismo, se implementó un bloqueo de señales y el uso de \texttt{sigsuspend}
+     para evitar la pérdida de notificaciones críticas durante la ejecución de estas secciones.
 
+    \item[Pregunta c:] \textbf{¿Es sencillo, o siquiera factible, organizar un sistema de este tipo usando únicamente señales?} \hfill \\
+    No es nada sencillo y, en la práctica, no es factible para un sistema así. Las señales son solo avisos; no pueden enviar datos 
+    como la solución del hash o los votos de cada minero. Además, las señales no sirven para bloquear el acceso a un archivo; si usáramos solo señales,
+     no tendríamos forma de garantizar que dos procesos no escriban en el mismo fichero a la vez, lo que acabaría rompiendo toda la lógica de la cadena.
 
-\textbf{Pregunta b) ¿Cómo se ha solucionado en el planteamiento dado?}
-
-
-\textbf{Pregunta c) ¿Es sencillo, o siquiera factible, organizar un sistema de este tipo usando únicamente señales?}
-
-
-\textbf{Pregunta d) ¿Cuáles son los mineros que tienden a ganar más monedas? (mostrar casos de
-ejecución que corroboren la respuesta)?}
-
-
+    \item[Pregunta d:] \textbf{¿Cuáles son los mineros que tienden a ganar más monedas?} \hfill \\
+    Como se puede ver en las pruebas de rendimiento (ver la Figura 2), los mineros que más ganan son los que tienen más hilos (\texttt{N\_THREADS}). 
+    Al tener más hilos, el proceso divide el trabajo de búsqueda y puede probar muchos más hashes por segundo en paralelo. En la captura de la Figura 2, 
+    se ve claramente que los procesos 8128 y 8129 (lanzados con 8 hilos) ganan casi todas las rondas, mientras que los de 1 hilo (8130 y 8131) casi nunca 
+    llegan a tiempo de encontrar la solución.
+\end{description}
 \end{document}

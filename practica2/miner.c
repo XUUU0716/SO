@@ -473,7 +473,7 @@ int main(int argc, char *argv[])
                 sem_post(sem_votes);
             }
             //Imprimir resultados
-            fprintf(stdout,"Winner %d -> [ ", getpid());
+            fprintf(stdout,"Winner %d => [ ", getpid());
             for (int i = 0; i < y_v; i++)
                 fprintf(stdout,"Y ");
             for (int i = 0; i < n_v; i++)
@@ -481,7 +481,7 @@ int main(int argc, char *argv[])
 
             if (y_v >= n_v)
             {
-                fprintf(stdout,"] -> Accepted\n");
+                fprintf(stdout,"] => Accepted\n");
                 my_coins++;
 
                 char log_name[32];
@@ -509,7 +509,7 @@ int main(int argc, char *argv[])
             }
             else
             {
-                printf("] -> Rejected\n");
+                printf("] => Rejected\n");
                 while (sem_wait(sem_target) == -1 && errno == EINTR)
                     ;
                 targetFile = fopen(TARGET_FILE, "w");
