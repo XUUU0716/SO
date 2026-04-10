@@ -41,7 +41,7 @@ Se han implementado correctamente los siguientes objetivos principales de la pr�
     hemos protegido las zonas críticas del código de cuatro formas:
     \begin{itemize}
     \item \textbf{Bloqueo inicial de señales:} Antes de entrar al bucle principal, se crea una máscara con \texttt{SIGUSR1}, \texttt{SIGUSR2} y \texttt{SIGALRM} 
-    y usando sigprocmask. Así nos aseguramos de que, si llega una señal justo cuando esta leyendo o escribiendo en un fichero compartido,
+    y usando pthread\_sigprocmask. Así nos aseguramos de que, si llega una señal justo cuando esta leyendo o escribiendo en un fichero compartido,
      esta se quede pendiente y no rompe la ejecución a medias.
     \item \textbf{Control de interrupciones (EINTR):} Al mezclar semáforos y señales, pasaba que a veces la llamada a \texttt{sem\_wait()} se interrumpía por la llegada de una 
     señal antes de haber conseguido el semáforo. Para evitar que el código siga adelante asumiendo que tiene el recurso (lo que corrompería todo),protegemos las peticiones en un bucle: 

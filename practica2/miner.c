@@ -202,9 +202,9 @@ int main(int argc, char *argv[])
     sigemptyset(&mask_empty);
 
     // Argument comprobation
-    if (sigprocmask(SIG_BLOCK, &mask_block, NULL) < 0)
+    if (pthread_sigmask(SIG_BLOCK, &mask_block, NULL) != 0)
     {
-        perror("sigprocmask");
+        perror("pthread_sigprocmask");
         exit(EXIT_FAILURE);
     }
 
@@ -339,7 +339,7 @@ int main(int argc, char *argv[])
             }
             sem_post(sem_target);
 
-            sigprocmask(SIG_UNBLOCK, &mask_block, NULL);
+            pthread_sigmask(SIG_UNBLOCK, &mask_block, NULL);
 
             // Inicializa  hilos
             args = malloc(sizeof(Thread_args) * n_threads);
@@ -356,7 +356,7 @@ int main(int argc, char *argv[])
             for (int i = 0; i < n_threads; i++)
                 pthread_join(threads[i], NULL);
 
-            sigprocmask(SIG_BLOCK, &mask_block, NULL);
+            pthread_sigmask(SIG_BLOCK, &mask_block, NULL);
 
             free(args);
             free(threads);
