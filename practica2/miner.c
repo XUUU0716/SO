@@ -36,6 +36,7 @@
  * @brief Thread_args
  * This structure store all information of argument needed to executed the function
  */
+ 
 typedef struct Thread_args
 {
     long int start; // El inicio del intervalo
