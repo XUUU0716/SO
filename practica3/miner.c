@@ -20,6 +20,7 @@
 #include <sys/stat.h>
 #include <pthread.h>
 #include <errno.h>
+#include <sys/wait.h>
 #include "pow.h"
 
 #include <mqueue.h>
@@ -78,6 +79,9 @@ Thread_args *args;                      // Array de argumentos de hilos
 
 volatile sig_atomic_t start_mining = 0; // Flags: si empezar a minar o no
 volatile sig_atomic_t start_voting = 0; // Flags: si empezar a votar o no
+
+mqd_t mq_monitor;                       // Cola de mensajes
+int fd_pipe[2];                         // Pipe para el Registrador
 
 /**
  * @brief This function print all miner
@@ -152,7 +156,7 @@ void miner_shutdown(void)
 
     mq_close(mq_monitor);
 
-    RegistradorMsg bye = {0, -1, 0};
+    RegistradorMsg bye = {0, 0, -1, 0}; // Ajustado para que el campo msg.solution sea -1
     write(fd_pipe[1], &bye, sizeof(bye));
     close(fd_pipe[1]);
     wait(NULL);
@@ -244,11 +248,8 @@ int main(int argc, char *argv[])
     int is_winner = 0;
     int my_coins = 0;
     int round_id = 0;
-    pid_t registrador_pid;
     struct sigaction pid_act, sigusr1_act, sigusr2_act;
     sigset_t mask_block, mask_empty;
-    mqd_t mq_monitor;
-    int fd_pipe[2];
 
     FILE *targetFile = NULL;
     FILE *pidFile = NULL;

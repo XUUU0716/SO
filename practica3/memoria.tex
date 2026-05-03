@@ -5,7 +5,7 @@
 \usepackage[T1]{fontenc}
 \usepackage{float}
 
-\title{\textbf{Sistemas Operativos: Práctica 1}}
+\title{\textbf{Sistemas Operativos: Práctica 3}}
 \author{
     Shaofan Xu \\
     \and 
@@ -19,29 +19,20 @@
 
 \clearpage
 \section{Introducción}
-En esta práctica el objetivo es implementar códigos en C que dado una función Hash $\mathrm{pow}:\mathbb{Z}\to \mathbb{Z}/9997697\mathbb{Z}$
-con $x \mapsto (X\times x+y) \bmod 9997697$ y la imagen, debemos sacar su correspondiente $x$. Donde aprovechamos los conocimientos de 
-procesos e hilos para simular la minería de un blockchain.
+En esta práctica el objetivo es ampliar la simulación de minería de blockchain introduciendo mecanismos avanzados de comunicación entre procesos (IPC) y memoria compartida. En concreto, se centraliza la salida de los mineros a través de un sistema de monitorización basado en colas de mensajes y un esquema productor-consumidor.
+
 \section{Requisitos cumplidos y no cumplidos}
 \subsection{Requisitos cumplidos}
-Se han implementado correctamente los siguientes objetivos principales de la práctica:
+Se han implementado correctamente los siguientes objetivos principales de la práctica, correspondientes a los apartados a y b:
 \begin{itemize}
-    \item \textbf{Control de salida (a)}: Impresión exacta de los mensajes de estado (\textit{``Miner exited with status 0''}, \textit{``Logger exited with status 0''}, etc.) según las especificaciones.
-    \item \textbf{Gestión de hilos y concurrencia (b):} Como sabemos que el rango de la preimagen está en [0,9997697] (para simplificar el problema),creamos $N$ hilos mediante \texttt{pthread\_create} para dividir el espacio de búsqueda en $N$, para cada uno de los hilos se encarga de cada parte de espacio de búsqueda, una vez un hilo se ha encontrado la solución, los otros inmediadamente tienen que parar. Así, sucesivamenta para cada ronda.
-    \item \textbf{Gestión de procesos (c):} Creación del proceso hijo Registrador mediante \texttt{fork ()} a partir de un proceso padre que denominamos Minero, dónde este se encarga de crear hilos para buscar de manera a fuerza bruta la preimagen ($x$) de una imagen dada ($y$). Y Registrador se encarga de guardar los resultados en un fichero.
-    \item \textbf{Comunicación IPC (c):} Se realiza a través de tuberías (pipe), donde establecemos 2 tuberías: Minero a Registrador y Registrador a Minero, y cerrando los lados que no se usen.
-    \begin{itemize} 
-        \item Minero a Registrador (pipe\_miner\_reg): Para que el Minero manda a Registrador el resultado de cada ronda de búsqueda. Y el Registrador recibe los resultados e imprimen en un fichero ``ppid.log'' con el formato dado. Este proceso, se continúa hasta que el Minero manda una señal de terminación ($-1$ como solución en nuestro caso)
-        \item Registrador a Minero (pipe\_reg\_miner): El Registrador manda una confirmación (1 en nuestro caso) de que se ha recibido correctamente por la tubería. Una vez el Minero recibe la confirmación se sigue con la siguiente ronda.
-    \end{itemize}
-    \item \textbf{Control de errores:}
+    \item \textbf{Sistema de Monitorización (Apartado a):} Se ha desarrollado el ejecutable \texttt{monitor}, el cual exige estar arrancado antes que cualquier minero. Este consta de dos procesos que gestionan la salida unificada:
     \begin{itemize}
-        \item \textbf{System Call} Hemos tenido en cuenta los casos en la que se usan llamadas al sistema como \textit{malloc,pipe,pthread\_create,etc}, así como sus controles de errores y liberación.
-        \item \textbf{Gestión adecuada de hilos:} El proceso principal Minero espera a todos los hilos creados mediante \texttt{pthread\_join()} antes de enviar los resultados de la ronda al Registrador.
-        \item \textbf{Gestión adecuada de proceso:} Cuando termina todas las rondas el proceso principal Minero espera al proceso hijo Registrador mediante \texttt{wait(\&status)}.
-        \item \textbf{Gestión adecuada de tuberías:} Durante la ejecución de programas, cada uno de los procesos se cierran el lado de tubería que no lo van a utilizar, y una vez, alcanzado el máximo de las rondas se cierran todas las tuberías.
+        \item \textbf{Comprobador (Padre):} Recibe los bloques ganadores a través de una cola de mensajes POSIX (\texttt{/mq\_monitor}). Antes de procesarlos, verifica su validez comprobando que $\mathrm{pow\_hash(solucion)} == \mathrm{target}$. Si es válido, actúa como \textit{Productor} e introduce el bloque en memoria compartida.
+        \item \textbf{Monitor (Hijo):} Actúa como \textit{Consumidor}, leyendo los bloques de la memoria compartida e imprimiéndolos por pantalla respetando los \textit{lags} de tiempo exigidos en la invocación.
     \end{itemize}
-   
+    \item \textbf{Esquema Productor-Consumidor IPC:} La comunicación interna del Monitor se ha sincronizado empleando un segmento de memoria compartida (\texttt{shm\_open} y \texttt{mmap}) que alberga un búfer circular. El acceso concurrente a dicho búfer está protegido mediante tres semáforos POSIX con nombre: \texttt{mutex}, \texttt{empty} y \texttt{full}.
+    \item \textbf{Adaptación del Minero (Apartado b):} El proceso Minero envía un mensaje con su pid, ronda, target y solución por la cola al proclamarse ganador de una votación. Asimismo, cuando el tiempo del minero expira y detecta que es el último en salir, envía un bloque especial de terminación (\texttt{\{-1, -1\}}) por la cola.
+    \item \textbf{Limpieza controlada de recursos:} Al recibir el bloque de finalización del último minero, el Comprobador intercepta el mensaje y se encarga de realizar las llamadas \texttt{mq\_unlink}, \texttt{shm\_unlink} y \texttt{sem\_unlink}, cerrando a su vez a su proceso hijo. Esto garantiza que no existan fugas de memoria en las estructuras del sistema operativo, como se ha comprobado en los test con Valgrind.
 \end{itemize}
 
 \subsection{Requisitos no cumplidos}
@@ -96,7 +87,7 @@ Se ejecutó el comando \texttt{./miner 0 10 N} (donde N es el número de hilos)
 manteniendo fijos el objetivo inicial (0) y el número de rondas (10).
 \begin{figure}[h]
     \centering
-    \includegraphics[width=0.7\textwidth]{ejecucion.png}
+    % \includegraphics[width=0.7\textwidth]{ejecucion.png}
     \caption{Resultados de ejecución del algoritmo POW con diferentes hilos.} 
     \label {fig:ejecucion_pow}
 \end{figure}

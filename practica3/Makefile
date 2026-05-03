@@ -1,19 +1,26 @@
-EXE=miner
+EXE=miner monitor
 CC=gcc -pedantic
 CFLAGS=-Wall
+LIBS=-lrt -pthread
 
 .PHONY: all clean
 all: $(EXE)
 
-$(EXE) : % : %.o pow.o
+miner: miner.o pow.o
 	@echo "#---------------------------"
 	@echo "# Generating $@ "
 	@echo "# Depepends on $^"
 	@echo "# Has changed $<"
-	$(CC) $(CFLAGS) -o $@ $@.o pow.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
-%: %.o %.o
-	$(CC) -p $@ $^
+monitor: monitor.o pow.o
+	@echo "#---------------------------"
+	@echo "# Generating $@ "
+	@echo "# Depepends on $^"
+	@echo "# Has changed $<"
+	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
 clean:
-	rm -f *.o $(EXE) *.log
+	rm -f *.o $(EXE) *.log *.txt *.pid *.tgt
+	rm -f /dev/shm/sem.miner_* /dev/shm/sem.sem_monitor_* /dev/shm/shm_monitor
+	rm -f /dev/mqueue/mq_monitor
