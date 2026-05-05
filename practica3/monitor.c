@@ -65,11 +65,11 @@ int main(int argc, char *argv[])
     int lag_monitor = atoi(argv[2]);
 
     // Limpieza de recursos previos por seguridad
-    mq_unlink(MQ_MINER_COMPROBADOR);
-    shm_unlink(SHM_NAME);
-    sem_unlink(SEM_MUTEX);
-    sem_unlink(SEM_EMPTY);
-    sem_unlink(SEM_FULL);
+    //mq_unlink(MQ_MINER_COMPROBADOR);
+    //shm_unlink(SHM_NAME);
+    //sem_unlink(SEM_MUTEX);
+    //sem_unlink(SEM_EMPTY);
+    //sem_unlink(SEM_FULL);
 
     // Inicializar cola, memoria compartida y semáforos
     queue = mq_open(MQ_MINER_COMPROBADOR, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, &attributes);
@@ -119,15 +119,9 @@ int main(int argc, char *argv[])
 
                 // Validar el bloque comprobando el hash (Apartado a)
                 if (pow_hash(msg.solution) == msg.target) {
-                    sem_wait(sem_empty);
-                    sem_wait(sem_mutex);
-
-                    shm_ptr->buffer[shm_ptr->in] = msg;
-                    shm_ptr->in = (shm_ptr->in + 1) % MAX_BUFFER;
-
-                    sem_post(sem_mutex);
-                    sem_post(sem_full);
+                    msg.is_valid = 1;
                 } else {
+                    msg.is_valid = 0;
                     printf("[Comprobador] ALERTA: Bloque inválido recibido (Ronda: %d)\n", msg.round);
                 }
 
@@ -142,14 +136,13 @@ int main(int argc, char *argv[])
         }
         
         // Destrucción de recursos controlada por el padre
+        kill(monitor_pid, SIGTERM);     // Terminar al hijo (Monitor)
         wait(NULL);
         mq_close(queue); mq_unlink(MQ_MINER_COMPROBADOR);
         munmap(shm_ptr, sizeof(SharedData)); shm_unlink(SHM_NAME);
         sem_close(sem_mutex); sem_close(sem_empty); sem_close(sem_full);
         sem_unlink(SEM_MUTEX); sem_unlink(SEM_EMPTY); sem_unlink(SEM_FULL);
-        
-        kill(monitor_pid, SIGTERM); // Terminar al hijo (Monitor)
-        wait(NULL);
+
     }else if(monitor_pid==0)
     {
         while(1)
