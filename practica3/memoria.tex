@@ -1,10 +1,20 @@
 \documentclass[12pt,a4paper]{article}
 \usepackage{graphicx}
 \usepackage{amsfonts,amsmath}
+\usepackage[spanish]{babel}
 \usepackage{listings}
 \usepackage[T1]{fontenc}
 \usepackage{float}
-
+\usepackage{geometry}
+\geometry{a4paper, margin=2.54cm}
+\lstset{
+    basicstyle=\ttfamily\footnotesize, 
+    breaklines=true,                
+    frame=single,     
+    showspaces=false,               
+    showstringspaces=false,          
+    columns=fullflexible            
+}
 \title{\textbf{Sistemas Operativos: Práctica 3}}
 \author{
     Shaofan Xu \\
@@ -16,6 +26,10 @@
 
 \begin{document}
 \maketitle
+\newpage
+
+\tableofcontents
+\newpage
 
 \clearpage
 \section{Introducción}
@@ -23,23 +37,24 @@ En esta práctica el objetivo es ampliar la simulación de minería de blockchai
 
 \section{Requisitos cumplidos y no cumplidos}
 \subsection{Requisitos cumplidos}
-Se han implementado correctamente los siguientes objetivos principales de la práctica, correspondientes a los apartados a y b:
+Se han implementado correctamente los siguientes objetivos principales de la práctica, correspondientes a los apartados a, b y c:
 \begin{itemize}
     \item \textbf{Sistema de Monitorización (Apartado a):} Se ha desarrollado el ejecutable \texttt{monitor}, el cual exige estar arrancado antes que cualquier minero. Este consta de dos procesos que gestionan la salida unificada:
     \begin{itemize}
         \item \textbf{Comprobador (Padre):} Recibe los bloques ganadores a través de una cola de mensajes POSIX (\texttt{/mq\_monitor}). Antes de procesarlos, verifica su validez comprobando que $\mathrm{pow\_hash(solucion)} == \mathrm{target}$. Si es válido, actúa como \textit{Productor} e introduce el bloque en memoria compartida.
         \item \textbf{Monitor (Hijo):} Actúa como \textit{Consumidor}, leyendo los bloques de la memoria compartida e imprimiéndolos por pantalla respetando los \textit{lags} de tiempo exigidos en la invocación.
     \end{itemize}
-    \item \textbf{Esquema Productor-Consumidor IPC:} La comunicación interna del Monitor se ha sincronizado empleando un segmento de memoria compartida (\texttt{shm\_open} y \texttt{mmap}) que alberga un búfer circular. El acceso concurrente a dicho búfer está protegido mediante tres semáforos POSIX con nombre(que es sustituido por semaforos sin nombres): \texttt{mutex}, \texttt{empty} y \texttt{full}.
-    \item \textbf{Adaptación del Minero (Apartado b):} El proceso Minero envía un mensaje con su pid, ronda, target y solución por la cola al proclamarse ganador de una votación. Asimismo, cuando el tiempo del minero expira y detecta que es el último en salir, envía un bloque especial de terminación (\texttt{\{-1, -1\}}) por la cola.
-    \item \textbf{Limpieza controlada de recursos:} Al recibir el bloque de finalización del último minero, el Comprobador intercepta el mensaje y se encarga de realizar las llamadas \texttt{mq\_unlink}, \texttt{shm\_unlink} y \texttt{sem\_unlink}, cerrando a su vez a su proceso hijo. Esto garantiza que no existan fugas de memoria en las estructuras del sistema operativo, como se ha comprobado en los test con Valgrind.
+    \item \textbf{Esquema Productor-Consumidor IPC:} La comunicación interna del Monitor se ha sincronizado empleando un segmento de memoria compartida (\texttt{shm\_open} y \texttt{mmap}) que alberga un búfer circular.El acceso concurrente a dicho búfer está protegido mediante tres semáforos POSIX sin nombre (\texttt{mutex}, \texttt{empty} y \texttt{full}), sustituyendo así a los semáforos con nombre de prácticas anteriores.
+    \item \textbf{Adaptación del Minero (Apartado b):} El proceso Minero envía un mensaje con su pid, ronda, target y solución por la cola al proclamarse ganador de una votación. Asimismo, cuando el tiempo del minero expira y detecta que es el último en salir, envía un bloque especial de terminación (\texttt{\{-1, -1\}}) por la cola. 
+    \item \textbf{Adaptación del Minero (Apartado c):} Se ha sustituido el uso de los ficheros por la memoria compartida, con el que hemos añadido campos necesarios para los mineros como el recuento de los votos y etcétera. Manteniendo el uso de fichero en el proceso \texttt{Registrador}.
+    \item \textbf{Limpieza controlada de recursos:} Al recibir el bloque de finalización del último minero, el Comprobador intercepta el mensaje y se encarga de realizar las llamadas \texttt{mq\_unlink}, \texttt{shm\_unlink}, \texttt{sem\_destroy} y \texttt{sem\_unlink}, cerrando a su vez a su proceso hijo. Esto garantiza que no existan fugas de memoria en las estructuras del sistema operativo, como se ha comprobado en los test con Valgrind.
 \end{itemize}
 
 \subsection{Requisitos no cumplidos}
 Todos los requisitos obligatorios especificados en el enunciado han sido implementados 
 y funcionan correctamente.
 
-\section{Pruebas: Funcionamiento y Rendimiento}
+\section{Pruebas de Funcionamiento}
 \subsection{Entorno de ejecución}
 Las pruebas y mediciones se han llevado a cabo bajo las siguientes condiciones de
 hardware y software para garantizar la consistencia de los resultados:
@@ -53,47 +68,186 @@ hardware y software para garantizar la consistencia de los resultados:
 Se han ejecutado diversas pruebas para asegurar el correcto funcionamiento del programa.
 
 \subsubsection{Casos normales}
-Se ejecutó el programa con parámetros correspondientes (ej.target inicial 100, 10 rondas y 4 hilos):
+Se ejecutó el script de pruebas proporcionado arrancando el monitor y múltiples mineros de forma concurrente (\texttt{./monitor 500 500} y varios \texttt{./miner 15 4}).
+En nuestro caso se puede probar con:
 \begin{lstlisting}[language=bash]
-./miner 100 10 4
+chmod +x test.sh
+./test.sh
 \end{lstlisting}
-El programa generó correctamente el archivo \texttt{.log} con la estructura especificada(Id, ronda, target, solución, etc ), alternando la validación (accepted/rejected). Al finalizar, se imprime en la terminal exactamente los mensajes requeridos:
-\begin{lstlisting}[language=bash]
 
+\textbf{Salida obtenida (Traza representativa):}
+Al finalizar, se observa la secuencia correcta de bloques validados, la votación y la salida escalonada de los mineros sin generar interbloqueos:
+\begin{lstlisting}[language=bash]
+[Comprobador] Iniciado correctamente. Esperando bloques...
+Miner 17532 added to system
+Miner 17533 added to system
+Miner 17534 added to system
+Winner 17532 => [ Y Y ] => Accepted
+Solution accepted: 00000000 --> 08916551
+Winner 17533 => [ Y Y ] => Accepted
+Solution accepted: 08916551 --> 05970796
+Winner 17534 => [ Y Y ] => Accepted
+Solution accepted: 05970796 --> 00937352
+Winner 17533 => [ Y N ] => Rejected
+Winner 17534 => [ Y Y ] => Accepted
+Solution accepted: 00937352 --> 01835314
+Winner 17533 => [ Y N ] => Rejected
+Winner 17534 => [ Y Y ] => Accepted
+Solution accepted: 01835314 --> 09331340
+Winner 17532 => [ Y N ] => Rejected
+Winner 17534 => [ Y Y ] => Accepted
+Solution accepted: 09331340 --> 02986686
+Winner 17532 => [ Y N ] => Rejected
+Winner 17534 => [ Y Y ] => Accepted
+Solution accepted: 02986686 --> 07299854
+Winner 17532 => [ Y N ] => Rejected
+Winner 17534 => [ Y Y ] => Accepted
+Solution accepted: 07299854 --> 03981310
+Miner 17532 exited system. Remaining miners: 2
+Current miners in system:
+  17533
+  17534
+Miner 17533 exited system. Remaining miners: 1
+Current miners in system:
+  17534
+Miner 17534 was the last one. System cleaned.
+\end{lstlisting}
+\subsubsection{Pruebas con valgrind}
+Para verificar el correcto funcionamiento de los códigos y que no haya fuga de memorias hemos utilizado el herramienta \texttt{valgrind} para ello (hemos proporcionado comandos en \texttt{makefile} para ejecutar \texttt{make valgrind\_monitor} y \texttt{make valgrind\_minero}).
+
+Usando los siguientes comandos arrancando un programa de \texttt{monitor} y varios de \texttt{minero}:
+
+\textbf{Salida obtenida (Traza representativa) de Monitor:}
+\begin{lstlisting}[language=bash]
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes --trace-children=yes ./monitor 500 500
+==26836== Memcheck, a memory error detector
+==26836== Copyright (C) 2002-2022, and GNU GPL'd, by Julian Seward et al.
+==26836== Using Valgrind-3.22.0 and LibVEX; rerun with -h for copyright info
+==26836== Command: ./monitor 500 500
+==26836== 
+[Comprobador] Iniciado correctamente. Esperando bloques...
+Solution accepted: 00000000 --> 08916551
+Solution accepted: 08916551 --> 05970796
+Solution accepted: 05970796 --> 00937352
+Solution accepted: 00937352 --> 01835314
+Solution accepted: 01835314 --> 09331340
+Solution accepted: 09331340 --> 02986686
+Solution accepted: 02986686 --> 07299854
+Solution accepted: 07299854 --> 03981310
+Solution accepted: 03981310 --> 08021305
+Solution accepted: 08021305 --> 04673876
+Solution accepted: 04673876 --> 02013491
+Solution accepted: 02013491 --> 06435300
+Solution accepted: 06435300 --> 03077079
+Solution accepted: 03077079 --> 05218179
+Solution accepted: 05218179 --> 00787429
+Solution accepted: 00787429 --> 07952220
+Solution accepted: 07952220 --> 02000011
+Solution accepted: 02000011 --> 09327418
+Solution accepted: 09327418 --> 08405727
+Solution accepted: 08405727 --> 01457266
+Solution accepted: 01457266 --> 01446753
+Solution accepted: 01446753 --> 07216332
+Solution accepted: 07216332 --> 08619049
+Solution accepted: 08619049 --> 03117528
+==26844== 
+==26844== HEAP SUMMARY:
+==26844==     in use at exit: 0 bytes in 0 blocks
+==26844==   total heap usage: 1 allocs, 1 frees, 1,024 bytes allocated
+==26844== 
+==26844== All heap blocks were freed -- no leaks are possible
+==26844== 
+==26844== For lists of detected and suppressed errors, rerun with: -s
+==26844== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
+==26836== 
+==26836== HEAP SUMMARY:
+==26836==     in use at exit: 0 bytes in 0 blocks
+==26836==   total heap usage: 1 allocs, 1 frees, 1,024 bytes allocated
+==26836== 
+==26836== All heap blocks were freed -- no leaks are possible
+==26836== 
+==26836== For lists of detected and suppressed errors, rerun with: -s
+==26836== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
+
+\end{lstlisting}
+
+\textbf{Salida obtenida (Traza representativa) de Minero:}
+\begin{lstlisting}[language=bash]
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes --trace-children=yes ./miner 15 4
+==27660== Memcheck, a memory error detector
+==27660== Copyright (C) 2002-2022, and GNU GPL'd, by Julian Seward et al.
+==27660== Using Valgrind-3.22.0 and LibVEX; rerun with -h for copyright info
+==27660== Command: ./miner 15 4
+==27660== 
+Miner 27660 added to system
+Winner 27660 => [ Y N ] => Rejected
+Winner 27660 => [ Y N ] => Rejected
+Winner 27660 => [ Y N ] => Rejected
+Winner 27660 => [ N ] => Rejected
+Winner 27660 => [ N ] => Rejected
+Winner 27660 => [ Miner 27660 was the last one. System cleaned.
+==27662== 
+==27662== HEAP SUMMARY:
+==27662==     in use at exit: 0 bytes in 0 blocks
+==27662==   total heap usage: 0 allocs, 0 frees, 0 bytes allocated
+==27662== 
+==27662== All heap blocks were freed -- no leaks are possible
+==27662== 
+==27662== For lists of detected and suppressed errors, rerun with: -s
+==27662== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
+==27660== 
+==27660== HEAP SUMMARY:
+==27660==     in use at exit: 0 bytes in 0 blocks
+==27660==   total heap usage: 31 allocs, 31 frees, 3,226 bytes allocated
+==27660== 
+==27660== All heap blocks were freed -- no leaks are possible
+==27660== 
+==27660== For lists of detected and suppressed errors, rerun with: -s
+==27660== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
+
+\end{lstlisting}
 \subsubsection{Casos de errores}
 Se probaron situaciones anómalas como:
 \begin{itemize}
-    \item \textbf{Falta de argumentos:} Al ejecutar \texttt{./miner} sin parámetros, el programa detecta el error, muestra el uso correcto \textit{``Usage ./miner < TARGET\_INI > < ROUNDS > < N\_THREADS >''} e imprime \textit{``Miner exited unexpectedly''}.
+    \item \textbf{Falta de argumentos:} Al ejecutar \texttt{./miner} o \texttt{./monitor} sin los parámetros obligatorios, el sistema atrapa el error inmediatamente, muestra la sintaxis correcta de uso (\texttt{Usage...}) y aborta la ejecución de forma segura.
+    \item \textbf{Límite de mineros:} Se ha controlado la entrada al sistema para que no exceda el \texttt{MAX\_MINERS} definido (en nuestro caso 100).
 \end{itemize}
 
-\subsection{Pruebas de Rendimiento}
-Para evaluar la eficiencia de la paralelización implementada, se han realizado pruebas de rendimiento variando el número de hilos de ejecución. Estas
-pruebas permiten analizar cómo el sistema escala al dividir el espacio de búsqueda entre múltiples unidades de procesamiento.
-\subsubsection{Pruebas realizadas}
-
-\subsubsection{Resultados Obtenidos}
-
-\subsubsection{Análisis y Razonamiento}
 \section{Conclusión y Respuesta a las cuestiones del enunciado}
 \textbf{Pregunta d) En base al funcionamiento del sistema anterior:}
 \begin{itemize}
     \item \textbf{¿Es necesario un sistema tipo productor-consumidor para garantizar que el sistema funciona correctamente si el retraso de Comprobador es mucho mayor que el de Minero? ¿Por qué?}
     
-    Sí, es absolutamente necesario. Si el \texttt{Comprobador} tiene un retraso (lag) mucho mayor que el de los \texttt{Mineros}, se convierte en el cuello de botella del sistema.
-    Los mineros generarán bloques ganadores más rápido de lo que el \texttt{Comprobador} puede verificarlos. El modelo productor-consumidor (apoyado por la cola de mensajes y el búfer circular) actúa como un amortiguador (buffer).
-    Permite que los mineros sigan depositando bloques en la cola sin quedarse bloqueados de inmediato, y a su vez, permite que el \texttt{Comprobador} deposite los bloques verificados en la memoria compartida de forma asíncrona respecto al \texttt{Monitor}.
-    Sin este sistema, la sincronización estricta obligaría a los mineros a detener su ejecución matemática hasta que el \texttt{Comprobador} y el \texttt{Monitor} terminasen sus lentas tareas de I/O y validación.
+    Sí, es necesario. Si el \texttt{Comprobador} tiene un retraso (lag) mucho mayor que el de los \texttt{Mineros}, entonces los mineros generarán ganadores más rápido de lo que el \texttt{Comprobador} puede verificarlos. 
+    En este caso, el modelo productor-consumidor (con la cola de mensajes y el búfer circular) nos evita el problema así el sistema está sincronizada.
+    
+    
+    Permite que los mineros sigan depositando bloques en la cola sin quedarse bloqueados de inmediato, y a su vez, permite que el \texttt{Comprobador} deposite los bloques verificados en la memoria compartida de 
+    forma asíncrona respecto al \texttt{Monitor}.
+    Sin este sistema, la sincronización obligaría a los mineros a detener su ejecución hasta que el \texttt{Comprobador} y el \texttt{Monitor} terminasen sus tareas y validación.
 
     \item \textbf{¿Y si el retraso de Comprobador es muy inferior al de Minero? ¿Por qué?}
     
-    Sí, sigue siendo conceptualmente necesario y una buena práctica de diseño de Sistemas Operativos, aunque el riesgo de colapso sea menor. Si el \texttt{Comprobador} es muy rápido, 
-    el búfer circular estará vacío la mayor parte del tiempo, ya que consumirá los bloques casi al instante. Sin embargo, el paradigma productor-consumidor es vital porque \textbf{desacopla} los procesos. 
-    Garantiza la exclusión mutua (evitando condiciones de carrera al acceder a la memoria compartida) y proporciona sincronización condicional (bloqueando al \texttt{Monitor} limpiamente cuando no hay bloques, en lugar de hacer espera activa consumiendo CPU). 
+    Sí, sigue siendo necesario, aunque en este caso el problema es menor. Si el \texttt{Comprobador} es muy rápido, 
+    el búfer circular estará vacío la mayor parte del tiempo, ya que consumirá los bloques casi al instante.
+    
+    Sin embargo, el modelo productor-consumidor es importante, ya que garantiza la exclusión mutua 
+    (evitando condiciones de carrera al acceder a la memoria compartida) y proporciona sincronización condicional (bloqueando al \texttt{Monitor} limpiamente cuando no hay bloques, en lugar de hacer espera activa consumiendo CPU). 
 
     \item \textbf{¿Se simplificaría la estructura global del sistema si entre Comprobador y Monitor hubiera también una cola de mensajes? ¿Por qué?}
     
-    Sí, la estructura global y el código del programa se simplificarían drásticamente. Las colas de mensajes POSIX (\texttt{mq\_open}, \texttt{mq\_send}, \texttt{mq\_receive}) ya implementan internamente el patrón productor-consumidor a nivel del kernel del Sistema Operativo. 
-    El kernel gestiona automáticamente la memoria del búfer interno, el control de concurrencia (mutex) y los bloqueos por cola vacía o llena. Al usar memoria compartida pura (\texttt{shm\_open}), como hemos hecho en esta práctica, el programador está obligado a gestionar manualmente
-     los punteros del búfer circular (\texttt{in}, \texttt{out}) y a coordinar explícitamente los semáforos (\texttt{mutex}, \texttt{empty}, \texttt{full}), lo que incrementa la complejidad del código y el riesgo de interbloqueos (deadlocks).
+    Sí, la respuesta es definitiva. Las colas de mensajes POSIX (\texttt{mq\_open}, \texttt{mq\_send}, \texttt{mq\_receive}) que ya implementan internamente con el modelo productor-consumidor. 
+    
+    
+    Ya que es el SO quien gestiona la memoria del búfer interno, el control de concurrencia (mutex) y los bloqueos por cola vacía o llena. Al usar memoria compartida pura (\texttt{shm\_open}), 
+    como hemos hecho en esta práctica,hemos tenido que gestionar manualmente estos recursos y coordinar con los semáforos (\texttt{mutex}, \texttt{empty}, \texttt{full}), complicando la lógica de los códigos.
+\end{itemize}
+\section{Otros aspectos}
+En nuestro proyecto hemos usado herramientas como \texttt{makefile}, \texttt{valgrind}, etc para facilitar el desarrollo de proyecto.
+\begin{itemize}
+    \item El programa compila sin errores utilizando el comando \texttt{make all} proporcionado en el \texttt{Makefile}.
+    \item Todo el código fuente cuenta con comentarios enriquecidos (Doxygen style), explicando las estructuras de datos y la lógica de IPC.
+    \item Se ha comprobado que no existen fugas de memoria (usando \texttt{valgrind} con \texttt{make valgrind\_monitor} y \texttt{make valgrind\_minero}) ni recursos IPC huérfanos tras la finalización normal del último minero.
+    \item Se puede limpiar los restos de ficheros con comando \texttt{make clean}.
 \end{itemize}
 \end{document}
