@@ -22,9 +22,6 @@
 
 #define MQ_MINER_COMPROBADOR "/mq_monitor"  //Nombre de la cola
 #define SHM_NAME "/shm_monitor"           //Nombre de memoria compartida          
-#define SEM_MUTEX "/sem_monitor_mutex"  //Semaforo de monitor
-#define SEM_EMPTY "/sem_monitor_empty"  //Semaforo de monitor
-#define SEM_FULL "/sem_monitor_full"    //Semaforo de mofitor
 #define MAX_BUFFER 6   //Numero maximo de buffer
 #define MAX_MSG 7   //Numero maximo de mensaje en la cola
 
@@ -51,7 +48,6 @@ int main(int argc, char *argv[])
     mqd_t queue;
     int shm_fd;
     SharedData *shm_ptr;
-    sem_t *sem_mutex, *sem_empty, *sem_full;
 
 
     //Argument comprobation
@@ -85,9 +81,9 @@ int main(int argc, char *argv[])
     shm_ptr->in = 0;
     shm_ptr->out = 0;
 
-    sem_mutex = sem_open(SEM_MUTEX, O_CREAT, S_IRUSR | S_IWUSR, 1);
-    sem_empty = sem_open(SEM_EMPTY, O_CREAT, S_IRUSR | S_IWUSR, MAX_BUFFER);
-    sem_full = sem_open(SEM_FULL, O_CREAT, S_IRUSR | S_IWUSR, 0);
+    sem_init(&shm_ptr->mutex, 1, 1);
+    sem_init(&shm_ptr->empty, 1, MAX_BUFFER);
+    sem_init(&shm_ptr->full, 1, 0);
 
     monitor_pid=fork();
     if(monitor_pid<0)
@@ -108,12 +104,12 @@ int main(int argc, char *argv[])
                 // Si recibimos el código -1, terminamos la ejecución
                 if(msg.target == -1 && msg.solution == -1) {
                     msg.is_valid = -1;
-                    sem_wait(sem_empty);
-                    sem_wait(sem_mutex);
+                    sem_wait(&shm_ptr->empty);
+                    sem_wait(&shm_ptr->mutex);
                     shm_ptr->buffer[shm_ptr->in] = msg;
                     shm_ptr->in = (shm_ptr->in + 1) % MAX_BUFFER;
-                    sem_post(sem_mutex);
-                    sem_post(sem_full);
+                    sem_post(&shm_ptr->mutex);
+                    sem_post(&shm_ptr->full);
                     break;
                 }
 
@@ -125,12 +121,12 @@ int main(int argc, char *argv[])
                     printf("[Comprobador] ALERTA: Bloque inválido recibido (Ronda: %d)\n", msg.round);
                 }
 
-                sem_wait(sem_empty);
-                sem_wait(sem_mutex);
+                sem_wait(&shm_ptr->empty);
+                sem_wait(&shm_ptr->mutex);
                 shm_ptr->buffer[shm_ptr->in] = msg;
                 shm_ptr->in = (shm_ptr->in + 1) % MAX_BUFFER;
-                sem_post(sem_mutex);
-                sem_post(sem_full);
+                sem_post(&shm_ptr->mutex);
+                sem_post(&shm_ptr->full);
             }
             usleep(lag_comprobador * 1000); // LAG_COMPROBADOR
         }
@@ -139,20 +135,23 @@ int main(int argc, char *argv[])
         kill(monitor_pid, SIGTERM);     // Terminar al hijo (Monitor)
         wait(NULL);
         mq_close(queue); mq_unlink(MQ_MINER_COMPROBADOR);
+
+        sem_destroy(&shm_ptr->mutex);
+        sem_destroy(&shm_ptr->empty);
+        sem_destroy(&shm_ptr->full);
+
         munmap(shm_ptr, sizeof(SharedData)); shm_unlink(SHM_NAME);
-        sem_close(sem_mutex); sem_close(sem_empty); sem_close(sem_full);
-        sem_unlink(SEM_MUTEX); sem_unlink(SEM_EMPTY); sem_unlink(SEM_FULL);
 
     }else if(monitor_pid==0)
     {
         while(1)
         {
-           sem_wait(sem_full);
-            sem_wait(sem_mutex);
+            sem_wait(&shm_ptr->full);
+            sem_wait(&shm_ptr->mutex);
             MonitorMsg msg = shm_ptr->buffer[shm_ptr->out];
             shm_ptr->out = (shm_ptr->out + 1) % MAX_BUFFER;
-            sem_post(sem_mutex);
-            sem_post(sem_empty);
+            sem_post(&shm_ptr->mutex);
+            sem_post(&shm_ptr->empty);
 
             if (msg.target == -1 && msg.solution == -1) {
                 break; 

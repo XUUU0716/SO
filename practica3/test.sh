@@ -6,7 +6,6 @@ for i in {1..5}; do
     ./miner 15 4 &
     ./miner 15 4 &
     ./miner 15 4 &
-    ./miner 15 4 &
     wait
     echo "=== Run $i done ==="
 done

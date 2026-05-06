@@ -12,6 +12,8 @@
 #ifndef _SHARED_DATA_H
 #define _SHARED_DATA_H
 
+#include <semaphore.h>
+
  #define MAX_MINERS 100     //Minero maximo
  
 
@@ -46,8 +48,12 @@ typedef struct {
     
     int carteras[MAX_MINERS];       // cartera de cada proceso
     
-    int votos_y;              // votos
-    int votos_n;
+    int votos_y;              // votos yes
+    int votos_n;               // votos no
+
+    sem_t mutex;    //Mutex
+    sem_t empty;    //sem empty
+    sem_t full; //sem full
     
     int validacion_correcta;  // validacion
 } SharedData;
