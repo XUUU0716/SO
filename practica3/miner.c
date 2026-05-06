@@ -27,10 +27,11 @@
 #include "shared_data.h"
 
 #include <mqueue.h>
-#define SEM_NAME_PID "/miner_pid"         // nombre del semaforo mutex para proteger pids.pid
-#define SEM_NAME_TARGET "/miner_target"   // nombre del semaforo mutex para proteger target.tgt
+
+#define SEM_NAME_PID "/miner_pid"         // nombre del semaforo mutex para proteger escritura de pid
+#define SEM_NAME_TARGET "/miner_target"   // nombre del semaforo mutex para proteger escritura de target
 #define SEM_NAME_WINNER "/miner_winner"   // nombre del semaforo mutex para proteger winner
-#define SEM_NAME_VOTE "/miner_vote"       // nombre del semaforo mutex para proteger vote.txt
+#define SEM_NAME_VOTE "/miner_vote"       // nombre del semaforo mutex para proteger el proceso de votacion
 #define SEM_NAME_BARRIER "/miner_barrier" // nombre del semaforo mutex para proteger el proceso de votacion
 
 #define TARGET_INIT 0 // Target default inicial
@@ -38,18 +39,21 @@
 #define MQ_NAME "/mq_monitor" // Nombre de la cola del Monitor
 
 /**
+ * @brief RegistradorMsg
+ * This structure store all information for process register
+ */
+typedef struct
+{
+    int round;    // El numero de ronda
+    int target;   // El target
+    int solution; // La solucion
+    int coins;    // El numero de monedas
+} RegistradorMsg; // Para el Pipe interno
+
+/**
  * @brief Thread_args
  * This structure store all information of argument needed to executed the function
  */
-
-typedef struct
-{
-    int round;
-    int target;
-    int solution;
-    int coins;
-} RegistradorMsg; // Para el Pipe interno
-
 typedef struct Thread_args
 {
     long int start; // El inicio del intervalo
@@ -108,10 +112,12 @@ void miner_shutdown(void)
     int remaining_miner = 0;
     pid_t myPid = getpid();
 
-    while (sem_wait(sem_pid) == -1) {
-        if (errno == EINTR) continue;
-        break; 
-    }   
+    while (sem_wait(sem_pid) == -1)
+    {
+        if (errno == EINTR)
+            continue;
+        break;
+    }
 
     int found = 0;
     for (int i = 0; i < shm_ptr->num_procesos; i++)
@@ -216,7 +222,13 @@ void *miner(void *arg)
     }
     return NULL;
 }
-
+/**
+ * @brief Esta funcion registra el resultado
+ * @author Javier
+ *
+ * @param pipe_read el descriptor de pipe para leer datos
+ * @return NULL
+ */
 void ejecutar_registrador(int pipe_read)
 {
     RegistradorMsg msg;
@@ -276,8 +288,6 @@ int main(int argc, char *argv[])
     int my_coins = 0;
     int round_id = 0;
 
-    // Memoria compartida
-
     struct sigaction pid_act, sigusr1_act, sigusr2_act;
     sigset_t mask_block, mask_empty;
 
@@ -296,6 +306,7 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
+    // Comprobacion de errores
     if (argc < 3)
     {
         fprintf(stderr, "Usage ./miner < N_SECS > < N_THREADS >\n");
@@ -319,6 +330,7 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
+    // Memoria compartida
     shm_ptr = mmap(NULL, sizeof(SharedData), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
     if (shm_ptr == MAP_FAILED)
     {
@@ -326,6 +338,7 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
+    // Pipe para registrador
     pipe(fd_pipe);
     pid_t reg_pid = fork();
 

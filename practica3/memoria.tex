@@ -30,7 +30,7 @@ Se han implementado correctamente los siguientes objetivos principales de la pr�
         \item \textbf{Comprobador (Padre):} Recibe los bloques ganadores a través de una cola de mensajes POSIX (\texttt{/mq\_monitor}). Antes de procesarlos, verifica su validez comprobando que $\mathrm{pow\_hash(solucion)} == \mathrm{target}$. Si es válido, actúa como \textit{Productor} e introduce el bloque en memoria compartida.
         \item \textbf{Monitor (Hijo):} Actúa como \textit{Consumidor}, leyendo los bloques de la memoria compartida e imprimiéndolos por pantalla respetando los \textit{lags} de tiempo exigidos en la invocación.
     \end{itemize}
-    \item \textbf{Esquema Productor-Consumidor IPC:} La comunicación interna del Monitor se ha sincronizado empleando un segmento de memoria compartida (\texttt{shm\_open} y \texttt{mmap}) que alberga un búfer circular. El acceso concurrente a dicho búfer está protegido mediante tres semáforos POSIX con nombre: \texttt{mutex}, \texttt{empty} y \texttt{full}.
+    \item \textbf{Esquema Productor-Consumidor IPC:} La comunicación interna del Monitor se ha sincronizado empleando un segmento de memoria compartida (\texttt{shm\_open} y \texttt{mmap}) que alberga un búfer circular. El acceso concurrente a dicho búfer está protegido mediante tres semáforos POSIX con nombre(que es sustituido por semaforos sin nombres): \texttt{mutex}, \texttt{empty} y \texttt{full}.
     \item \textbf{Adaptación del Minero (Apartado b):} El proceso Minero envía un mensaje con su pid, ronda, target y solución por la cola al proclamarse ganador de una votación. Asimismo, cuando el tiempo del minero expira y detecta que es el último en salir, envía un bloque especial de terminación (\texttt{\{-1, -1\}}) por la cola.
     \item \textbf{Limpieza controlada de recursos:} Al recibir el bloque de finalización del último minero, el Comprobador intercepta el mensaje y se encarga de realizar las llamadas \texttt{mq\_unlink}, \texttt{shm\_unlink} y \texttt{sem\_unlink}, cerrando a su vez a su proceso hijo. Esto garantiza que no existan fugas de memoria en las estructuras del sistema operativo, como se ha comprobado en los test con Valgrind.
 \end{itemize}
@@ -59,19 +59,6 @@ Se ejecutó el programa con parámetros correspondientes (ej.target inicial 100,
 \end{lstlisting}
 El programa generó correctamente el archivo \texttt{.log} con la estructura especificada(Id, ronda, target, solución, etc ), alternando la validación (accepted/rejected). Al finalizar, se imprime en la terminal exactamente los mensajes requeridos:
 \begin{lstlisting}[language=bash]
-Solution accepted: 100 --> 2813411
-Solution rejected: 2813411 --> 4952263
-Solution rejected: 4952263 --> 1751421
-Solution rejected: 1751421 --> 4619098
-Solution accepted: 4619098 --> 9959801
-Solution rejected: 9959801 --> 297242
-Solution accepted: 297242 --> 7642589
-Solution rejected: 7642589 --> 1566555
-Solution rejected: 1566555 --> 7848135
-Solution rejected: 7848135 --> 5915685
-Logger exited with status 0
-Miner exited with status 0
-\end{lstlisting}
 
 \subsubsection{Casos de errores}
 Se probaron situaciones anómalas como:
@@ -83,47 +70,30 @@ Se probaron situaciones anómalas como:
 Para evaluar la eficiencia de la paralelización implementada, se han realizado pruebas de rendimiento variando el número de hilos de ejecución. Estas
 pruebas permiten analizar cómo el sistema escala al dividir el espacio de búsqueda entre múltiples unidades de procesamiento.
 \subsubsection{Pruebas realizadas}
-Se ejecutó el comando \texttt{./miner 0 10 N} (donde N es el número de hilos)
-manteniendo fijos el objetivo inicial (0) y el número de rondas (10).
-\begin{figure}[h]
-    \centering
-    % \includegraphics[width=0.7\textwidth]{ejecucion.png}
-    \caption{Resultados de ejecución del algoritmo POW con diferentes hilos.} 
-    \label {fig:ejecucion_pow}
-\end{figure}
+
 \subsubsection{Resultados Obtenidos}
- Los datos obtenidos se resumen en la siguiente tabla:
-\begin{table}[H]
-\centering
-\begin{tabular}{|c|c|c|c|c|}
-\hline
-\textbf{Hilos (N)} & \textbf{Tiempo Real (s)} & \textbf{Tiempo User (s)} & \textbf{Tiempo Sys (s)} & \textbf{Speedup ($S_n$)} \\ \hline
-1 & 0.166s & 0.075s & 0.000s & 1.00x (Base) \\ \hline
-2 & 0.107s & 0.046s & 0.007s & 1.55x \\ \hline
-4 & 0.074s & 0.010s & 0.003s & 2.24x \\ \hline
-8 & 0.087s & 0.094s & 0.000s & 1.90x \\ \hline
-\end{tabular}
-\caption{Tiempos de ejecución y Speedup en función del número de hilos}
-\label{tab:tiempos_hilos}
-\end{table}
+
 \subsubsection{Análisis y Razonamiento}
-Tras analizar los datos de la tabla, se pueden extraer las siguientes
-conclusiones técnicas:
-\begin{itemize}
-    \item Paralelización efectiva (1 a 4 hilos): Se observa una reducción notable en el tiempo Real a medida que aumentamos los hilos hasta 4. Esto confirma que la estrategia de fragmentar el intervalo POW\_LIMIT permite que los hilos realicen búsquedas de fuerza bruta de forma independiente y concurrente, optimizando el uso de los núcleos de la CPU.
-    \item Saturación y Overhead (8 hilos): Al incrementar el número de hilos a 8, el tiempo Real aumenta ligeramente a 0.087s y el tiempo User se eleva significativamente a 0.094s. Este fenómeno ocurre porque, para una carga de trabajo de solo 10 rondas, el coste temporal de crear, sincronizar y destruir 8 hilos mediante pthread\_create y pthread\_join supera el beneficio obtenido por la computación paralela.
-    \item Número óptimo de hilos: Para la arquitectura del sistema utilizado (WSL2) y la carga de trabajo específica de la práctica, el número óptimo se sitúa en 4 hilos. En este punto se alcanza el mejor equilibrio entre el aprovechamiento de la CPU y la sobrecarga mínima del sistema operativo en la gestión de hilos y cambios de contexto.
-    \item Consumo de CPU: El hecho de que el tiempo User (tiempo total de CPU) sea superior al tiempo Real en la prueba de 8 hilos refleja que el sistema está invirtiendo más esfuerzo en la gestión de la concurrencia que en la resolución efectiva del problema matemático
-\end{itemize}
 \section{Conclusión y Respuesta a las cuestiones del enunciado}
-\textbf{Pregunta d) ¿Qué conclusiones se pueden tomar respecto al número óptimo de hilos?}
+\textbf{Pregunta d) En base al funcionamiento del sistema anterior:}
+\begin{itemize}
+    \item \textbf{¿Es necesario un sistema tipo productor-consumidor para garantizar que el sistema funciona correctamente si el retraso de Comprobador es mucho mayor que el de Minero? ¿Por qué?}
+    
+    Sí, es absolutamente necesario. Si el \texttt{Comprobador} tiene un retraso (lag) mucho mayor que el de los \texttt{Mineros}, se convierte en el cuello de botella del sistema.
+    Los mineros generarán bloques ganadores más rápido de lo que el \texttt{Comprobador} puede verificarlos. El modelo productor-consumidor (apoyado por la cola de mensajes y el búfer circular) actúa como un amortiguador (buffer).
+    Permite que los mineros sigan depositando bloques en la cola sin quedarse bloqueados de inmediato, y a su vez, permite que el \texttt{Comprobador} deposite los bloques verificados en la memoria compartida de forma asíncrona respecto al \texttt{Monitor}.
+    Sin este sistema, la sincronización estricta obligaría a los mineros a detener su ejecución matemática hasta que el \texttt{Comprobador} y el \texttt{Monitor} terminasen sus lentas tareas de I/O y validación.
 
+    \item \textbf{¿Y si el retraso de Comprobador es muy inferior al de Minero? ¿Por qué?}
+    
+    Sí, sigue siendo conceptualmente necesario y una buena práctica de diseño de Sistemas Operativos, aunque el riesgo de colapso sea menor. Si el \texttt{Comprobador} es muy rápido, 
+    el búfer circular estará vacío la mayor parte del tiempo, ya que consumirá los bloques casi al instante. Sin embargo, el paradigma productor-consumidor es vital porque \textbf{desacopla} los procesos. 
+    Garantiza la exclusión mutua (evitando condiciones de carrera al acceder a la memoria compartida) y proporciona sincronización condicional (bloqueando al \texttt{Monitor} limpiamente cuando no hay bloques, en lugar de hacer espera activa consumiendo CPU). 
 
-Una vez concluido todos los trabajos realizados, podemos concluir que el número óptimo de hilos coincide con el número de procesadores disponible para máquina.
-
-
-Como se observa en la tabla, el máximo rendimiento se alcanza exactamente al utilizar 4 hilos. Al incrementar el número a 8 hilos, el rendimiento disminuye.
-
-Ya que si creamos más hilos que el número del procesador, no es posible ejecutar los hilos de forma simultánea. El planificador del sistema operativo se va a obligar intercalando su ejecución.
-
+    \item \textbf{¿Se simplificaría la estructura global del sistema si entre Comprobador y Monitor hubiera también una cola de mensajes? ¿Por qué?}
+    
+    Sí, la estructura global y el código del programa se simplificarían drásticamente. Las colas de mensajes POSIX (\texttt{mq\_open}, \texttt{mq\_send}, \texttt{mq\_receive}) ya implementan internamente el patrón productor-consumidor a nivel del kernel del Sistema Operativo. 
+    El kernel gestiona automáticamente la memoria del búfer interno, el control de concurrencia (mutex) y los bloqueos por cola vacía o llena. Al usar memoria compartida pura (\texttt{shm\_open}), como hemos hecho en esta práctica, el programador está obligado a gestionar manualmente
+     los punteros del búfer circular (\texttt{in}, \texttt{out}) y a coordinar explícitamente los semáforos (\texttt{mutex}, \texttt{empty}, \texttt{full}), lo que incrementa la complejidad del código y el riesgo de interbloqueos (deadlocks).
+\end{itemize}
 \end{document}

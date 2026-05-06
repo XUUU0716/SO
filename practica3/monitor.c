@@ -9,7 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <mqueue.h>
-#include <fcntl.h> 
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -20,24 +20,24 @@
 #include "pow.h"
 #include "shared_data.h"
 
-#define MQ_MINER_COMPROBADOR "/mq_monitor"  //Nombre de la cola
-#define SHM_NAME "/shm_monitor"           //Nombre de memoria compartida          
-#define MAX_BUFFER 6   //Numero maximo de buffer
-#define MAX_MSG 7   //Numero maximo de mensaje en la cola
+#define MQ_MINER_COMPROBADOR "/mq_monitor" // Nombre de la cola
+#define SHM_NAME "/shm_monitor"            // Nombre de memoria compartida
+#define MAX_BUFFER 6                       // Numero maximo de buffer
+#define MAX_MSG 7                          // Numero maximo de mensaje en la cola
 
 /**
  * Atributos para la cola
  */
-struct mq_attr attributes = {.mq_flags = 0 ,
-.mq_maxmsg = MAX_MSG ,
-.mq_curmsgs = 0 ,
-.mq_msgsize = sizeof(MonitorMsg) };
+struct mq_attr attributes = {.mq_flags = 0,
+                             .mq_maxmsg = MAX_MSG,
+                             .mq_curmsgs = 0,
+                             .mq_msgsize = sizeof(MonitorMsg)};
 
- /**
-  * @brief la entrada de programa
-  */
+/**
+ * @brief la entrada de programa
+ */
 int main(int argc, char *argv[])
-{      
+{
     /**
      * El pid de monitor
      */
@@ -46,35 +46,41 @@ int main(int argc, char *argv[])
      * El descriptor de cola
      */
     mqd_t queue;
+    /**
+     * El descriptor de fichero
+     */
     int shm_fd;
+    /**
+     * Puntero a memoria compartida
+     */
     SharedData *shm_ptr;
 
-
-    //Argument comprobation
-    if(argc!=3)
+    // Argument comprobation
+    if (argc != 3)
     {
         fprintf(stderr, "Usage ./monitor < LAG_COMPROBADOR > < LAG_MONITOR >\n");
         exit(EXIT_FAILURE);
     }
 
-    int lag_comprobador = atoi(argv[1]);
-    int lag_monitor = atoi(argv[2]);
+    int lag_comprobador = atoi(argv[1]); // Lag para comprobador
+    int lag_monitor = atoi(argv[2]);     // Lag para monitor
 
     // Limpieza de recursos previos por seguridad
-    //mq_unlink(MQ_MINER_COMPROBADOR);
-    //shm_unlink(SHM_NAME);
-    //sem_unlink(SEM_MUTEX);
-    //sem_unlink(SEM_EMPTY);
-    //sem_unlink(SEM_FULL);
+    // mq_unlink(MQ_MINER_COMPROBADOR);
+    // shm_unlink(SHM_NAME);
+    // sem_unlink(SEM_MUTEX);
+    // sem_unlink(SEM_EMPTY);
+    // sem_unlink(SEM_FULL);
 
     // Inicializar cola, memoria compartida y semáforos
     queue = mq_open(MQ_MINER_COMPROBADOR, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, &attributes);
-    if(queue == (mqd_t)-1)
+    if (queue == (mqd_t)-1)
     {
         perror("Error opening the queue");
         exit(EXIT_FAILURE);
     }
 
+    // Crear la memoria compartida
     shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
     ftruncate(shm_fd, sizeof(SharedData));
     shm_ptr = mmap(NULL, sizeof(SharedData), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
@@ -85,24 +91,26 @@ int main(int argc, char *argv[])
     sem_init(&shm_ptr->empty, 1, MAX_BUFFER);
     sem_init(&shm_ptr->full, 1, 0);
 
-    monitor_pid=fork();
-    if(monitor_pid<0)
+    // Crear proceso monitor
+    monitor_pid = fork();
+    if (monitor_pid < 0)
     {
         perror("Error fork");
-        exit(EXIT_FAILURE);    
+        exit(EXIT_FAILURE);
     }
-    if(monitor_pid>0)
+    if (monitor_pid > 0)
     {
         // PROCESO PADRE: Comprobador
         MonitorMsg msg;
         printf("[Comprobador] Iniciado correctamente. Esperando bloques...\n");
 
-        while(1)
+        while (1)
         {
-            if(mq_receive(queue, (char*)&msg, sizeof(MonitorMsg), NULL) != -1)
+            if (mq_receive(queue, (char *)&msg, sizeof(MonitorMsg), NULL) != -1)
             {
                 // Si recibimos el código -1, terminamos la ejecución
-                if(msg.target == -1 && msg.solution == -1) {
+                if (msg.target == -1 && msg.solution == -1)
+                {
                     msg.is_valid = -1;
                     sem_wait(&shm_ptr->empty);
                     sem_wait(&shm_ptr->mutex);
@@ -114,9 +122,12 @@ int main(int argc, char *argv[])
                 }
 
                 // Validar el bloque comprobando el hash (Apartado a)
-                if (pow_hash(msg.solution) == msg.target) {
+                if (pow_hash(msg.solution) == msg.target)
+                {
                     msg.is_valid = 1;
-                } else {
+                }
+                else
+                {
                     msg.is_valid = 0;
                     printf("[Comprobador] ALERTA: Bloque inválido recibido (Ronda: %d)\n", msg.round);
                 }
@@ -130,21 +141,24 @@ int main(int argc, char *argv[])
             }
             usleep(lag_comprobador * 1000); // LAG_COMPROBADOR
         }
-        
+
         // Destrucción de recursos controlada por el padre
-        kill(monitor_pid, SIGTERM);     // Terminar al hijo (Monitor)
+        kill(monitor_pid, SIGTERM); // Terminar al hijo (Monitor)
         wait(NULL);
-        mq_close(queue); mq_unlink(MQ_MINER_COMPROBADOR);
+        mq_close(queue);
+        mq_unlink(MQ_MINER_COMPROBADOR);
 
         sem_destroy(&shm_ptr->mutex);
         sem_destroy(&shm_ptr->empty);
         sem_destroy(&shm_ptr->full);
 
-        munmap(shm_ptr, sizeof(SharedData)); shm_unlink(SHM_NAME);
-
-    }else if(monitor_pid==0)
+        munmap(shm_ptr, sizeof(SharedData));
+        shm_unlink(SHM_NAME);
+    }
+    else if (monitor_pid == 0)
     {
-        while(1)
+        // Proceso Monitor
+        while (1)
         {
             sem_wait(&shm_ptr->full);
             sem_wait(&shm_ptr->mutex);
@@ -153,13 +167,17 @@ int main(int argc, char *argv[])
             sem_post(&shm_ptr->mutex);
             sem_post(&shm_ptr->empty);
 
-            if (msg.target == -1 && msg.solution == -1) {
-                break; 
+            if (msg.target == -1 && msg.solution == -1)
+            {
+                break;
             }
-
-            if (msg.is_valid) {
+            // Imprime los resultados
+            if (msg.is_valid)
+            {
                 printf("Solution accepted: %08d --> %08d\n", msg.target, msg.solution);
-            } else {
+            }
+            else
+            {
                 printf("Solution rejected: %08d !-> %08d\n", msg.target, msg.solution);
             }
 
