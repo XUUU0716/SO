@@ -1,9 +1,9 @@
 EXE=miner monitor
 CC=gcc -pedantic
-CFLAGS=-Wall
+CFLAGS=-Wall -g
 LIBS=-lrt -pthread
 
-.PHONY: all clean
+.PHONY: all clean miner monitor valgrind_monitor valgrind_minero
 all: $(EXE)
 
 miner: miner.o pow.o
@@ -20,6 +20,12 @@ monitor: monitor.o pow.o
 	@echo "# Has changed $<"
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
+valgrind_monitor:
+	valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes --trace-children=yes ./monitor 500 500
+
+valgrind_minero:
+	valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes --trace-children=yes ./miner 15 4
+	
 clean:
 	rm -f *.o $(EXE) *.log *.txt *.pid *.tgt
 	rm -f /dev/shm/sem.miner_* /dev/shm/sem.sem_monitor_* /dev/shm/shm_monitor
