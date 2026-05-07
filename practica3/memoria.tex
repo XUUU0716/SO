@@ -174,36 +174,40 @@ Solution accepted: 08619049 --> 03117528
 \textbf{Salida obtenida (Traza representativa) de Minero:}
 \begin{lstlisting}[language=bash]
 valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes --trace-children=yes ./miner 15 4
-==27660== Memcheck, a memory error detector
-==27660== Copyright (C) 2002-2022, and GNU GPL'd, by Julian Seward et al.
-==27660== Using Valgrind-3.22.0 and LibVEX; rerun with -h for copyright info
-==27660== Command: ./miner 15 4
-==27660== 
-Miner 27660 added to system
-Winner 27660 => [ Y N ] => Rejected
-Winner 27660 => [ Y N ] => Rejected
-Winner 27660 => [ Y N ] => Rejected
-Winner 27660 => [ N ] => Rejected
-Winner 27660 => [ N ] => Rejected
-Winner 27660 => [ Miner 27660 was the last one. System cleaned.
-==27662== 
-==27662== HEAP SUMMARY:
-==27662==     in use at exit: 0 bytes in 0 blocks
-==27662==   total heap usage: 0 allocs, 0 frees, 0 bytes allocated
-==27662== 
-==27662== All heap blocks were freed -- no leaks are possible
-==27662== 
-==27662== For lists of detected and suppressed errors, rerun with: -s
-==27662== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
-==27660== 
-==27660== HEAP SUMMARY:
-==27660==     in use at exit: 0 bytes in 0 blocks
-==27660==   total heap usage: 31 allocs, 31 frees, 3,226 bytes allocated
-==27660== 
-==27660== All heap blocks were freed -- no leaks are possible
-==27660== 
-==27660== For lists of detected and suppressed errors, rerun with: -s
-==27660== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
+==804048== Memcheck, a memory error detector
+==804048== Copyright (C) 2002-2022, and GNU GPL'd, by Julian Seward et al.
+==804048== Using Valgrind-3.22.0 and LibVEX; rerun with -h for copyright info
+==804048== Command: ./miner 15 4
+==804048== 
+Miner 804048 added to system
+Winner 804048 => [ Y Y Y ] => Accepted
+Winner 804048 => [ Y Y Y ] => Accepted
+Winner 804048 => [ Y Y N ] => Accepted
+Winner 804048 => [ N N N ] => Rejected
+Winner 804048 => [ Y N ] => Rejected
+Winner 804048 => [ Y N ] => Rejected
+Winner 804048 => [ Y Y ] => Accepted
+Winner 804048 => [ Y ] => Accepted
+Winner 804048 => [ Y ] => Accepted
+Miner 804048 was the last one. System cleaned.
+==804058== 
+==804058== HEAP SUMMARY:
+==804058==     in use at exit: 0 bytes in 0 blocks
+==804058==   total heap usage: 18 allocs, 18 frees, 41,112 bytes allocated
+==804058== 
+==804058== All heap blocks were freed -- no leaks are possible
+==804058== 
+==804058== For lists of detected and suppressed errors, rerun with: -s
+==804058== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
+==804048== 
+==804048== HEAP SUMMARY:
+==804048==     in use at exit: 0 bytes in 0 blocks
+==804048==   total heap usage: 41 allocs, 41 frees, 3,706 bytes allocated
+==804048== 
+==804048== All heap blocks were freed -- no leaks are possible
+==804048== 
+==804048== For lists of detected and suppressed errors, rerun with: -s
+==804048== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
 
 \end{lstlisting}
 \subsubsection{Casos de errores}

@@ -44,11 +44,15 @@
  */
 typedef struct
 {
-    int round;    // El numero de ronda
-    int target;   // El target
-    int solution; // La solucion
-    int coins;    // El numero de monedas
-} RegistradorMsg; // Para el Pipe interno
+    int round;       // El numero de ronda
+    long target;     // El target
+    long solution;   // La solucion
+    int coins;       // El numero de monedas
+    int winner_pid;  // Pid de winner
+    int y_votes;     // votos a fovor
+    int total_votes; // Votos total
+    int is_accepted; // si es valido o no
+} RegistradorMsg;    // Para el Pipe interno
 
 /**
  * @brief Thread_args
@@ -66,10 +70,10 @@ sem_t *sem_winner = NULL;  // Semaforo para proteger winner
 sem_t *sem_target = NULL;  // Semaforo para proteger target.tgt
 sem_t *sem_barrier = NULL; // Semaforo para proteger el proceso de votacion
 
-atomic_int globalSolution = 0;          // La solucion encontrada
+atomic_long globalSolution = 0;         // La solucion encontrada
 atomic_int findSolution = 0;            // Flag: si ha encontrado la solucion o no
 volatile sig_atomic_t time_to_exit = 0; // Flag: si ha alcanzado el tiempo limite o no
-int globalTarget = 0;                   // El target
+long globalTarget = 0;                  // El target
 int n_threads = 0;                      // Numero de hilos
 pthread_t *threads;                     // Array de hilos
 Thread_args *args;                      // Array de argumentos de hilos
@@ -101,8 +105,9 @@ void print_all_miners(FILE *f)
 /**
  * @brief Esta funcion borra al proceso mismo del fichero pids.pid, y si es ultimo elimina el fichero
  * @author Javier
+ * @param exit_status el estado de exit
  */
-void miner_shutdown(void)
+void miner_shutdown(int exit_status)
 {
     if (start_voting)
     {
@@ -155,14 +160,29 @@ void miner_shutdown(void)
     if (remaining_miner == 0)
     {
 
-        MonitorMsg end = {-1, -1, getpid(), -1, 0};
-        mq_send(mq_monitor, (char *)&end, sizeof(end), 0);
+        MonitorMsg end;
+        memset(&end, 0, sizeof(end));
+        end.target = -1;
+        end.solution = -1;
+        end.winner_pid = getpid();
+        end.round = -1;
+        end.is_valid = 0;
+        if (mq_send(mq_monitor, (char *)&end, sizeof(end), 0) == -1)
+        {
+            perror("Error mq_send en shutdown");
+        }
     }
 
     mq_close(mq_monitor);
 
-    RegistradorMsg bye = {0, 0, -1, 0}; // Ajustado para que el campo msg.solution sea -1
-    write(fd_pipe[1], &bye, sizeof(bye));
+    // Ajustado para que el campo msg.solution sea -1
+    RegistradorMsg bye;
+    memset(&bye, 0, sizeof(bye));
+    bye.solution = -1;
+    if (write(fd_pipe[1], &bye, sizeof(bye)) == -1)
+    {
+        perror("Error al escribir en el pipe (shutdown)");
+    }
     close(fd_pipe[1]);
     wait(NULL);
 
@@ -176,7 +196,7 @@ void miner_shutdown(void)
     munmap(shm_ptr, sizeof(SharedData));
     close(shm_fd);
 
-    exit(EXIT_SUCCESS);
+    exit(exit_status);
 }
 
 /**
@@ -235,6 +255,24 @@ void ejecutar_registrador(int pipe_read)
     char log_name[32];
     sprintf(log_name, "%d.txt", getppid());
 
+    if (mq_monitor != (mqd_t)-1)
+    {
+        mq_close(mq_monitor);
+        mq_monitor = (mqd_t)-1;
+    }
+
+    if (shm_ptr != NULL)
+    {
+        munmap(shm_ptr, sizeof(SharedData));
+        shm_ptr = NULL;
+    }
+
+    if (shm_fd != -1)
+    {
+        close(shm_fd);
+        shm_fd = -1;
+    }
+
     while (1)
     {
         ssize_t bytes_leidos = 0;
@@ -265,12 +303,26 @@ void ejecutar_registrador(int pipe_read)
             break; // Señal de cierre
 
         FILE *logFile = fopen(log_name, "a");
+        if (logFile == NULL)
+        {
+            perror("Error opening log");
+            continue;
+        }
         if (logFile)
         {
-            fprintf(logFile, "Round: %d | Coins: %d | Solution: %d\n",
-                    msg.round, msg.coins, msg.solution);
+            fprintf(logFile, "Id:       %d\n", msg.round);
+            fprintf(logFile, "Winner:   %d\n", msg.winner_pid);
+            fprintf(logFile, "Target:   %ld\n", msg.target);
+            fprintf(logFile, "Solution: %ld (%s)\n", msg.solution,
+                    msg.is_accepted ? "validated" : "rejected");
+            fprintf(logFile, "Votes:    %d/%d\n", msg.y_votes, msg.total_votes);
+            fprintf(logFile, "Wallets:  %d:%d\n\n", msg.winner_pid, msg.coins);
             fclose(logFile);
         }
+    }
+    if (pipe_read != -1)
+    {
+        close(pipe_read);
     }
     exit(EXIT_SUCCESS);
 }
@@ -339,7 +391,11 @@ int main(int argc, char *argv[])
     }
 
     // Pipe para registrador
-    pipe(fd_pipe);
+    if (pipe(fd_pipe) == -1)
+    {
+        perror("Error creando el pipe");
+        exit(EXIT_FAILURE);
+    }
     pid_t reg_pid = fork();
 
     if (reg_pid < 0)
@@ -374,23 +430,35 @@ int main(int argc, char *argv[])
     pid_act.sa_handler = alarm_handler;
     sigemptyset(&pid_act.sa_mask);
     pid_act.sa_flags = 0;
-    sigaction(SIGALRM, &pid_act, NULL);
+    if (sigaction(SIGALRM, &pid_act, NULL) == -1)
+    {
+        perror("Error en sigaction SIGALRM");
+        miner_shutdown(EXIT_FAILURE);
+    }
 
     sigusr1_act.sa_handler = sigusr1_handler;
     sigemptyset(&sigusr1_act.sa_mask);
     sigusr1_act.sa_flags = 0;
-    sigaction(SIGUSR1, &sigusr1_act, NULL);
+    if (sigaction(SIGUSR1, &sigusr1_act, NULL) == -1)
+    {
+        perror("Error en sigaction SIGUSR1");
+        miner_shutdown(EXIT_FAILURE);
+    }
 
     sigusr2_act.sa_handler = sigusr2_handler;
     sigemptyset(&sigusr2_act.sa_mask);
     sigusr2_act.sa_flags = 0;
-    sigaction(SIGUSR2, &sigusr2_act, NULL);
+    if (sigaction(SIGUSR2, &sigusr2_act, NULL) == -1)
+    {
+        perror("Error en sigaction SIGUSR2");
+        miner_shutdown(EXIT_FAILURE);
+    }
 
     // Incorporar al sistema, intentando escribir su pid
     while (sem_wait(sem_pid) == -1 && errno == EINTR)
     {
         if (time_to_exit)
-            miner_shutdown();
+            miner_shutdown(EXIT_SUCCESS);
     }
     if (shm_ptr->num_procesos == 0)
         is_first_miner = 1;
@@ -437,7 +505,7 @@ int main(int argc, char *argv[])
         while (sem_wait(sem_target) == -1 && errno == EINTR)
         {
             if (time_to_exit)
-                miner_shutdown();
+                miner_shutdown(EXIT_SUCCESS);
         }
         shm_ptr->target_objetivo = TARGET_INIT;
         sem_post(sem_target);
@@ -446,11 +514,11 @@ int main(int argc, char *argv[])
         while (total_miners < 2)
         {
             if (time_to_exit)
-                miner_shutdown();
+                miner_shutdown(EXIT_SUCCESS);
             while (sem_wait(sem_pid) == -1 && errno == EINTR)
             {
                 if (time_to_exit)
-                    miner_shutdown();
+                    miner_shutdown(EXIT_SUCCESS);
             }
             total_miners = shm_ptr->num_procesos;
             sem_post(sem_pid);
@@ -462,7 +530,7 @@ int main(int argc, char *argv[])
         while (sem_wait(sem_pid) == -1 && errno == EINTR)
         {
             if (time_to_exit)
-                miner_shutdown();
+                miner_shutdown(EXIT_SUCCESS);
         }
         for (int i = 0; i < shm_ptr->num_procesos; i++)
         {
@@ -480,7 +548,7 @@ int main(int argc, char *argv[])
     {
         // Si llega el tiempo limite deberia terminar
         if (time_to_exit)
-            miner_shutdown();
+            miner_shutdown(EXIT_SUCCESS);
 
         // Minering
         if (start_mining == 1)
@@ -494,7 +562,7 @@ int main(int argc, char *argv[])
             while (sem_wait(sem_target) == -1 && errno == EINTR)
             {
                 if (time_to_exit)
-                    miner_shutdown();
+                    miner_shutdown(EXIT_SUCCESS);
             }
             globalTarget = shm_ptr->target_objetivo;
             sem_post(sem_target);
@@ -505,6 +573,15 @@ int main(int argc, char *argv[])
             args = malloc(sizeof(Thread_args) * n_threads);
             threads = malloc(sizeof(pthread_t) * n_threads);
 
+            if (args == NULL || threads == NULL)
+            {
+                if (args)
+                    free(args);
+                if (threads)
+                    free(threads);
+                perror("Error en malloc");
+                miner_shutdown(EXIT_FAILURE);
+            }
             for (int i = 0; i < n_threads; i++)
             {
                 args[i].start = i * (POW_LIMIT / n_threads);
@@ -522,7 +599,7 @@ int main(int argc, char *argv[])
             free(threads);
 
             if (time_to_exit)
-                miner_shutdown();
+                miner_shutdown(EXIT_SUCCESS);
 
             // Intenta ser el winner desde el hilo principal
             if (findSolution == 1)
@@ -534,15 +611,23 @@ int main(int argc, char *argv[])
                     while (sem_wait(sem_target) == -1 && errno == EINTR)
                     {
                         if (time_to_exit)
-                            miner_shutdown();
+                            miner_shutdown(EXIT_SUCCESS);
                     }
-                    shm_ptr->solucion_actual = globalSolution;
+                    // Por cada 5 ronda enviamos una erronea
+                    if (round_id % 5 == 0)
+                    {
+                        shm_ptr->solucion_actual = globalSolution + 1;
+                    }
+                    else
+                    {
+                        shm_ptr->solucion_actual = globalSolution;
+                    }
                     sem_post(sem_target);
 
                     while (sem_wait(sem_pid) == -1 && errno == EINTR)
                     {
                         if (time_to_exit)
-                            miner_shutdown();
+                            miner_shutdown(EXIT_SUCCESS);
                     }
                     for (int i = 0; i < shm_ptr->num_procesos; i++)
                     {
@@ -570,7 +655,7 @@ int main(int argc, char *argv[])
             while (sem_wait(sem_target) == -1 && errno == EINTR)
             {
                 if (time_to_exit)
-                    miner_shutdown();
+                    miner_shutdown(EXIT_SUCCESS);
             }
             shm_ptr->target_objetivo = globalSolution;
             sem_post(sem_target);
@@ -578,7 +663,7 @@ int main(int argc, char *argv[])
             while (sem_wait(sem_pid) == -1 && errno == EINTR)
             {
                 if (time_to_exit)
-                    miner_shutdown();
+                    miner_shutdown(EXIT_SUCCESS);
             }
             expected_votes += shm_ptr->num_procesos;
             sem_post(sem_pid);
@@ -590,7 +675,7 @@ int main(int argc, char *argv[])
                     while (sem_wait(sem_barrier) == -1 && errno == EINTR)
                     {
                         if (time_to_exit)
-                            miner_shutdown();
+                            miner_shutdown(EXIT_SUCCESS);
                     }
                 }
             }
@@ -601,12 +686,21 @@ int main(int argc, char *argv[])
             while (sem_wait(sem_votes) == -1 && errno == EINTR)
             {
                 if (time_to_exit)
-                    miner_shutdown();
+                    miner_shutdown(EXIT_SUCCESS);
             }
             y_v = shm_ptr->votos_y;
             n_v = shm_ptr->votos_n;
             total_v = y_v + n_v;
             sem_post(sem_votes);
+
+            RegistradorMsg r_info;
+            memset(&r_info, 0, sizeof(r_info));
+            r_info.round = round_id;
+            r_info.target = saved_target;
+            r_info.solution = globalSolution;
+            r_info.winner_pid = getpid();
+            r_info.y_votes = y_v;
+            r_info.total_votes = total_v;
 
             // Imprimir resultados
             fprintf(stdout, "Winner %d => [ ", getpid());
@@ -627,31 +721,25 @@ int main(int argc, char *argv[])
 
                 fprintf(stdout, "] => Accepted\n");
                 my_coins++;
+                r_info.is_accepted = 1;
+                r_info.coins = my_coins;
 
-                RegistradorMsg r_info = {round_id, saved_target, globalSolution, my_coins};
-                write(fd_pipe[1], &r_info, sizeof(r_info));
-
-                MonitorMsg m_info = {saved_target, globalSolution, getpid(), round_id, 0};
-                mq_send(mq_monitor, (char *)&m_info, sizeof(m_info), 1);
-
-                char log_name[32];
-                sprintf(log_name, "%d.txt", getpid());
-                FILE *logFile = fopen(log_name, "a");
-                if (logFile)
+                MonitorMsg m_info;
+                memset(&m_info, 0, sizeof(m_info));
+                m_info.target = saved_target;
+                m_info.solution = globalSolution;
+                m_info.winner_pid = getpid();
+                m_info.round = round_id;
+                m_info.is_valid = 0;
+                if (mq_send(mq_monitor, (char *)&m_info, sizeof(m_info), 1) == -1)
                 {
-                    fprintf(logFile, "Id:      %d\n", round_id);
-                    fprintf(logFile, "Winner:  %d\n", getpid());
-                    fprintf(logFile, "Target:  %d\n", saved_target);
-                    fprintf(logFile, "Solution: %d (validated)\n", globalSolution);
-                    fprintf(logFile, "Votes:   %d/%d\n", y_v, total_v);
-                    fprintf(logFile, "Wallets: %d:%d\n\n", getpid(), my_coins);
-                    fclose(logFile);
+                    perror("Error mq_send al enviar bloque ganador");
                 }
 
                 while (sem_wait(sem_target) == -1 && errno == EINTR)
                 {
                     if (time_to_exit)
-                        miner_shutdown();
+                        miner_shutdown(EXIT_SUCCESS);
                 }
                 shm_ptr->target_objetivo = globalSolution;
                 sem_post(sem_target);
@@ -659,20 +747,26 @@ int main(int argc, char *argv[])
             else
             {
                 printf("] => Rejected\n");
+                r_info.is_accepted = 0;
+                r_info.coins = my_coins;
                 while (sem_wait(sem_target) == -1 && errno == EINTR)
                 {
                     if (time_to_exit)
-                        miner_shutdown();
+                        miner_shutdown(EXIT_SUCCESS);
                 }
                 shm_ptr->target_objetivo = saved_target;
                 sem_post(sem_target);
+            }
+            if (write(fd_pipe[1], &r_info, sizeof(r_info)) == -1)
+            {
+                perror("Error al escribir en el pipe");
             }
             fflush(stdout);
 
             while (sem_wait(sem_votes) == -1 && errno == EINTR)
             {
                 if (time_to_exit)
-                    miner_shutdown();
+                    miner_shutdown(EXIT_SUCCESS);
             }
             shm_ptr->votos_y = 0;
             shm_ptr->votos_n = 0;
@@ -687,7 +781,7 @@ int main(int argc, char *argv[])
             while (sem_wait(sem_pid) == -1 && errno == EINTR)
             {
                 if (time_to_exit)
-                    miner_shutdown();
+                    miner_shutdown(EXIT_SUCCESS);
             }
             current_miners = shm_ptr->num_procesos;
             sem_post(sem_pid);
@@ -695,13 +789,13 @@ int main(int argc, char *argv[])
             while (current_miners < 2)
             {
                 if (time_to_exit)
-                    miner_shutdown();
+                    miner_shutdown(EXIT_SUCCESS);
 
                 current_miners = 0;
                 while (sem_wait(sem_pid) == -1 && errno == EINTR)
                 {
                     if (time_to_exit)
-                        miner_shutdown();
+                        miner_shutdown(EXIT_SUCCESS);
                 }
                 current_miners = shm_ptr->num_procesos;
                 sem_post(sem_pid);
@@ -717,7 +811,7 @@ int main(int argc, char *argv[])
             while (sem_wait(sem_pid) == -1 && errno == EINTR)
             {
                 if (time_to_exit)
-                    miner_shutdown();
+                    miner_shutdown(EXIT_SUCCESS);
             }
             for (int i = 0; i < shm_ptr->num_procesos; i++)
             {
@@ -741,7 +835,7 @@ int main(int argc, char *argv[])
                 while (sem_wait(sem_target) == -1 && errno == EINTR)
                 {
                     if (time_to_exit)
-                        miner_shutdown();
+                        miner_shutdown(EXIT_SUCCESS);
                 }
                 solution_escrita = shm_ptr->solucion_actual;
                 sem_post(sem_target);
@@ -749,7 +843,7 @@ int main(int argc, char *argv[])
                 while (sem_wait(sem_votes) == -1 && errno == EINTR)
                 {
                     if (time_to_exit)
-                        miner_shutdown();
+                        miner_shutdown(EXIT_SUCCESS);
                 }
 
                 if (pow_hash(solution_escrita) == globalTarget)

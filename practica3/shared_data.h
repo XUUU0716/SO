@@ -22,8 +22,8 @@
  */
 typedef struct
 {
-    int target;       // EL objetivo
-    int solution;     // La solucion encontrada
+    long target;       // EL objetivo
+    long solution;     // La solucion encontrada
     pid_t winner_pid; // el pid de ganador
     int round;        // La ronda
     int is_valid;     // si es valido o no
@@ -37,12 +37,12 @@ typedef struct
 {
     // Campos para monitor
     MonitorMsg buffer[6]; // BUffer circular
-    int in;               // El indice de entrada
-    int out;              // el indice de salida
+    int in;               // El indice de entrada para buffer circular  
+    int out;              // el indice de salida para buffer circular
 
     // Para minero
-    int target_objetivo; // el target
-    int solucion_actual; // la solucion actual
+    long target_objetivo; // el target
+    long solucion_actual; // la solucion actual
 
     pid_t procesos_pid[MAX_MINERS]; // array de pids
     int num_procesos;               // numero de proceso

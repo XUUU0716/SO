@@ -82,10 +82,39 @@ int main(int argc, char *argv[])
 
     // Crear la memoria compartida
     shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
-    ftruncate(shm_fd, sizeof(SharedData));
+    if (shm_fd == -1)
+    {
+        perror("Error en shm_open");
+        mq_close(queue);
+        mq_unlink(MQ_MINER_COMPROBADOR);
+        exit(EXIT_FAILURE);
+    }
+    if (ftruncate(shm_fd, sizeof(SharedData)) == -1)
+    {
+        perror("Error en ftruncate");
+        close(shm_fd);
+        shm_unlink(SHM_NAME);
+        mq_close(queue);
+        mq_unlink(MQ_MINER_COMPROBADOR);
+        exit(EXIT_FAILURE);
+    }
     shm_ptr = mmap(NULL, sizeof(SharedData), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    if (shm_ptr == MAP_FAILED)
+    {
+        perror("Error en mmap");
+        close(shm_fd);
+        shm_unlink(SHM_NAME);
+        mq_close(queue);
+        mq_unlink(MQ_MINER_COMPROBADOR);
+        exit(EXIT_FAILURE);
+    }
+    close(shm_fd);
     shm_ptr->in = 0;
     shm_ptr->out = 0;
+    shm_ptr->num_procesos = 0;
+    shm_ptr->votos_y = 0;
+    shm_ptr->votos_n = 0;
+    shm_ptr->target_objetivo = 0;   
 
     sem_init(&shm_ptr->mutex, 1, 1);
     sem_init(&shm_ptr->empty, 1, MAX_BUFFER);
@@ -96,13 +125,22 @@ int main(int argc, char *argv[])
     if (monitor_pid < 0)
     {
         perror("Error fork");
+        sem_destroy(&shm_ptr->mutex);
+        sem_destroy(&shm_ptr->empty);
+        sem_destroy(&shm_ptr->full);
+
+        munmap(shm_ptr, sizeof(SharedData));
+        
+        shm_unlink(SHM_NAME);
+        mq_close(queue);
+        mq_unlink(MQ_MINER_COMPROBADOR);
         exit(EXIT_FAILURE);
     }
     if (monitor_pid > 0)
     {
         // PROCESO PADRE: Comprobador
         MonitorMsg msg;
-        printf("[Comprobador] Iniciado correctamente. Esperando bloques...\n");
+        fprintf(stdout,"[Comprobador] Iniciado correctamente. Esperando bloques...\n");
 
         while (1)
         {
@@ -129,7 +167,7 @@ int main(int argc, char *argv[])
                 else
                 {
                     msg.is_valid = 0;
-                    printf("[Comprobador] ALERTA: Bloque inválido recibido (Ronda: %d)\n", msg.round);
+                    fprintf(stdout,"[Comprobador] ALERTA: Bloque inválido recibido (Ronda: %d)\n", msg.round);
                 }
 
                 sem_wait(&shm_ptr->empty);
@@ -143,7 +181,6 @@ int main(int argc, char *argv[])
         }
 
         // Destrucción de recursos controlada por el padre
-        kill(monitor_pid, SIGTERM); // Terminar al hijo (Monitor)
         wait(NULL);
         mq_close(queue);
         mq_unlink(MQ_MINER_COMPROBADOR);
@@ -174,11 +211,11 @@ int main(int argc, char *argv[])
             // Imprime los resultados
             if (msg.is_valid)
             {
-                printf("Solution accepted: %08d --> %08d\n", msg.target, msg.solution);
+                fprintf(stdout,"Solution accepted: %08ld --> %08ld\n", msg.target, msg.solution);
             }
             else
             {
-                printf("Solution rejected: %08d !-> %08d\n", msg.target, msg.solution);
+                fprintf(stdout,"Solution rejected: %08ld !-> %08ld\n", msg.target, msg.solution);
             }
 
             usleep(lag_monitor * 1000); // LAG_MONITOR
