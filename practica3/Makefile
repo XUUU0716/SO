@@ -20,6 +20,10 @@ monitor: monitor.o pow.o
 	@echo "# Has changed $<"
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
+miner.o: miner.c shared_data.h pow.h
+monitor.o: monitor.c shared_data.h pow.h
+pow.o: pow.c pow.h
+
 valgrind_monitor:
 	valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes --trace-children=yes ./monitor 500 500
 
