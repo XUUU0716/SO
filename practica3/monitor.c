@@ -70,7 +70,7 @@ int main(int argc, char *argv[])
     shm_unlink(SHM_NAME);
 
     // Inicializar cola, memoria compartida y semáforos
-    queue = mq_open(MQ_MINER_COMPROBADOR, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, &attributes);
+    queue = mq_open(MQ_MINER_COMPROBADOR, O_CREAT | O_RDWR | O_EXCL, S_IRUSR | S_IWUSR, &attributes);
     if (queue == (mqd_t)-1)
     {
         perror("Error opening the queue");
@@ -78,7 +78,7 @@ int main(int argc, char *argv[])
     }
 
     // Crear la memoria compartida
-    shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+    shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR | O_EXCL, S_IRUSR | S_IWUSR);
     if (shm_fd == -1)
     {
         perror("Error en shm_open");
