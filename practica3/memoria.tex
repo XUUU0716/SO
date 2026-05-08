@@ -210,6 +210,11 @@ Miner 804048 was the last one. System cleaned.
 ==804048== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
 
 \end{lstlisting}
+
+\begin{quote}
+\textbf{Nota sobre los votos negativos (N):} \\
+Durante la ejecución del programa, es posible observar que se registran votos negativos (\texttt{N}), incluso sin contar las rondas donde se ha forzado el envío de una solución errónea. Este comportamiento es totalmente normal, se debe a que, en el momento de la votación, algún minero puede estar validando la solución utilizando el \texttt{target} de una ronda anterior que aún no ha actualizado.
+\end{quote}
 \subsubsection{Casos de errores}
 Se probaron situaciones anómalas como:
 \begin{itemize}

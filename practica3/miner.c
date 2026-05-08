@@ -379,6 +379,7 @@ int main(int argc, char *argv[])
     if (shm_fd == -1)
     {
         perror("Error,el Monitor no ha creado la memoria compartida.\n");
+        mq_close(mq_monitor);
         exit(EXIT_FAILURE);
     }
 
@@ -387,6 +388,8 @@ int main(int argc, char *argv[])
     if (shm_ptr == MAP_FAILED)
     {
         perror("Error, mapeo errorneo");
+        close(shm_fd);
+        mq_close(mq_monitor);
         exit(EXIT_FAILURE);
     }
 
@@ -394,6 +397,9 @@ int main(int argc, char *argv[])
     if (pipe(fd_pipe) == -1)
     {
         perror("Error creando el pipe");
+        munmap(shm_ptr, sizeof(SharedData));
+        close(shm_fd);
+        mq_close(mq_monitor);
         exit(EXIT_FAILURE);
     }
     pid_t reg_pid = fork();
@@ -401,6 +407,11 @@ int main(int argc, char *argv[])
     if (reg_pid < 0)
     {
         perror("Error fork");
+        close(fd_pipe[0]);
+        close(fd_pipe[1]);
+        munmap(shm_ptr, sizeof(SharedData));
+        close(shm_fd);
+        mq_close(mq_monitor);
         exit(EXIT_FAILURE);
     }
     else if (reg_pid == 0)
@@ -417,13 +428,33 @@ int main(int argc, char *argv[])
     // sem_unlink(SEM_NAME_BARRIER);
 
     // crear semaforos
-    if ((sem_pid = sem_open(SEM_NAME_PID, O_CREAT, S_IRUSR | S_IWUSR, 1)) == SEM_FAILED ||
-        (sem_target = sem_open(SEM_NAME_TARGET, O_CREAT, S_IRUSR | S_IWUSR, 1)) == SEM_FAILED ||
-        (sem_winner = sem_open(SEM_NAME_WINNER, O_CREAT, S_IRUSR | S_IWUSR, 1)) == SEM_FAILED ||
-        (sem_votes = sem_open(SEM_NAME_VOTE, O_CREAT, S_IRUSR | S_IWUSR, 1)) == SEM_FAILED ||
-        (sem_barrier = sem_open(SEM_NAME_BARRIER, O_CREAT, S_IRUSR | S_IWUSR, 0)) == SEM_FAILED)
+    sem_pid     = sem_open(SEM_NAME_PID, O_CREAT, S_IRUSR | S_IWUSR, 1);
+    sem_target  = sem_open(SEM_NAME_TARGET, O_CREAT, S_IRUSR | S_IWUSR, 1);
+    sem_winner  = sem_open(SEM_NAME_WINNER, O_CREAT, S_IRUSR | S_IWUSR, 1);
+    sem_votes   = sem_open(SEM_NAME_VOTE, O_CREAT, S_IRUSR | S_IWUSR, 1);
+    sem_barrier = sem_open(SEM_NAME_BARRIER, O_CREAT, S_IRUSR | S_IWUSR, 0);
+
+    if (sem_pid == SEM_FAILED || sem_target == SEM_FAILED ||
+        sem_winner == SEM_FAILED || sem_votes == SEM_FAILED ||
+        sem_barrier == SEM_FAILED)
     {
-        perror("sem_open");
+        perror("Error en sem_open");
+        
+        if (sem_pid != SEM_FAILED) sem_close(sem_pid);
+        if (sem_target != SEM_FAILED) sem_close(sem_target);
+        if (sem_winner != SEM_FAILED) sem_close(sem_winner);
+        if (sem_votes != SEM_FAILED) sem_close(sem_votes);
+        if (sem_barrier != SEM_FAILED) sem_close(sem_barrier);
+
+        kill(reg_pid, SIGTERM);
+        wait(NULL);
+
+        close(fd_pipe[1]);
+
+        munmap(shm_ptr, sizeof(SharedData));
+        close(shm_fd);
+        mq_close(mq_monitor);
+
         exit(EXIT_FAILURE);
     }
     // set the sigal action

@@ -65,12 +65,9 @@ int main(int argc, char *argv[])
     int lag_comprobador = atoi(argv[1]); // Lag para comprobador
     int lag_monitor = atoi(argv[2]);     // Lag para monitor
 
-    // Limpieza de recursos previos por seguridad
-    // mq_unlink(MQ_MINER_COMPROBADOR);
-    // shm_unlink(SHM_NAME);
-    // sem_unlink(SEM_MUTEX);
-    // sem_unlink(SEM_EMPTY);
-    // sem_unlink(SEM_FULL);
+    //Limpieza de recursos previos por seguridad
+    mq_unlink(MQ_MINER_COMPROBADOR);
+    shm_unlink(SHM_NAME);
 
     // Inicializar cola, memoria compartida y semáforos
     queue = mq_open(MQ_MINER_COMPROBADOR, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, &attributes);
